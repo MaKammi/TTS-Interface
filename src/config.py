@@ -1,0 +1,142 @@
+"""
+Configuration and constants for Gemini TTS Interface
+"""
+
+import os
+from pathlib import Path
+from dotenv import load_dotenv, set_key
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = BASE_DIR / ".env"
+OUTPUT_DIR = BASE_DIR / "output"
+TEMP_DIR = BASE_DIR / "temp"
+
+OUTPUT_DIR.mkdir(exist_ok=True)
+TEMP_DIR.mkdir(exist_ok=True)
+
+# Load environment variables
+load_dotenv(ENV_FILE)
+
+# API Configuration
+DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY", "")
+DEFAULT_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+
+# Available Gemini Models for TTS
+AVAILABLE_MODELS = [
+    {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash TTS (Empfohlen)"},
+    {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Neueste Version)"},
+    {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro TTS (Höchste Qualität)"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Standard)"},
+]
+
+# Available Gemini Prebuilt Voices
+AVAILABLE_VOICES = [
+    {"id": "Puck", "name": "Puck", "desc": "Freundlich & gesprächig (Neutral/Männlich)"},
+    {"id": "Charon", "name": "Charon", "desc": "Tief, autoritär & informativ (Männlich)"},
+    {"id": "Kore", "name": "Kore", "desc": "Ruhig, klar & angenehm (Weiblich)"},
+    {"id": "Fenrir", "name": "Fenrir", "desc": "Kraftvoll & dynamisch (Männlich)"},
+    {"id": "Aoede", "name": "Aoede", "desc": "Melodisch, warm & erzählend (Weiblich)"},
+    {"id": "Leda", "name": "Leda", "desc": "Sanft & professionell (Weiblich)"},
+    {"id": "Orus", "name": "Orus", "desc": "Resonanzreich & präsent (Männlich)"},
+    {"id": "Zephyr", "name": "Zephyr", "desc": "Leicht, modern & lebendig (Neutral)"},
+]
+
+# Supported Languages
+SUPPORTED_LANGUAGES = [
+    {"id": "auto", "name": "🌐 Automatisch erkennen (Auto-Detect)"},
+    {"id": "de", "name": "🇩🇪 Deutsch"},
+    {"id": "en", "name": "🇬🇧 Englisch"},
+    {"id": "fr", "name": "🇫🇷 Französisch"},
+    {"id": "es", "name": "🇪🇸 Spanisch"},
+    {"id": "it", "name": "🇮🇹 Italienisch"},
+]
+
+# Audio Emotion & Style Tags (Display Name, Tag Text, Tooltip/Description, Category)
+AUDIO_TAGS = [
+    {"display": "😂 Lachen", "tag": "[lachen]", "gemini_tag": "[laugh]", "desc": "Lachen oder belustigter Ton"},
+    {"display": "🤫 Flüstern", "tag": "[flüstern]", "gemini_tag": "[whisper]", "desc": "Geflüsterter, leiser Ton"},
+    {"display": "😢 Traurig", "tag": "[traurig]", "gemini_tag": "[sad]", "desc": "Gedrückte, traurige Stimmlage"},
+    {"display": "✨ Begeistert", "tag": "[begeistert]", "gemini_tag": "[excited]", "desc": "Energiegeladen und enthusiastisch"},
+    {"display": "⏸️ Pause", "tag": "[Pause]", "gemini_tag": "[pause]", "desc": "Kurze Sprechpause einlegen"},
+    {"display": "😮‍💨 Seufzen", "tag": "[seufzen]", "gemini_tag": "[sigh]", "desc": "Hörbares Seufzen"},
+    {"display": "😠 Wütend", "tag": "[wütend]", "gemini_tag": "[angry]", "desc": "Verärgerte, energische Betonung"},
+    {"display": "🤔 Nachdenklich", "tag": "[nachdenklich]", "gemini_tag": "[thoughtful]", "desc": "Zögernd, reflektierend"},
+    {"display": "🐢 Langsam", "tag": "[langsam]", "gemini_tag": "[slow]", "desc": "Verlangsamtes Sprechtempo"},
+    {"display": "🐇 Schnell", "tag": "[schnell]", "gemini_tag": "[fast]", "desc": "Erhöhtes Sprechtempo"},
+]
+
+# Audio Format Presets
+AUDIO_PRESETS = {
+    "web_aac_mono_64k": {
+        "name": "🌐 Web-Optimiert (AAC-LC Mono 64k FastStart) [Standard]",
+        "extension": ".mp4",
+        "codec": "aac",
+        "channels": 1,
+        "sample_rate": 44100,
+        "bitrate": "64k",
+        "faststart": True,
+        "desc": "Höchste Browser-Kompatibilität, 50% Bandbreitenersparnis, Streaming-optimiert"
+    },
+    "web_m4a_aac_mono_64k": {
+        "name": "🎵 M4A Web (AAC-LC Mono 64k FastStart)",
+        "extension": ".m4a",
+        "codec": "aac",
+        "channels": 1,
+        "sample_rate": 48000,
+        "bitrate": "64k",
+        "faststart": True,
+        "desc": "M4A Container, 48 kHz Abtastrate, FastStart Flag"
+    },
+    "hq_m4a_stereo_128k": {
+        "name": "🎧 High Quality M4A (AAC-LC Stereo 128k)",
+        "extension": ".m4a",
+        "codec": "aac",
+        "channels": 2,
+        "sample_rate": 48000,
+        "bitrate": "128k",
+        "faststart": True,
+        "desc": "Hohe Audioqualität für Podcasts und Musikplayer"
+    },
+    "mp3_standard_192k": {
+        "name": "📻 MP3 Standard (192 kbit/s Stereo)",
+        "extension": ".mp3",
+        "codec": "libmp3lame",
+        "channels": 2,
+        "sample_rate": 44100,
+        "bitrate": "192k",
+        "faststart": False,
+        "desc": "Klassisches MP3-Format für universelle Abspielbarkeit"
+    },
+    "wav_uncompressed": {
+        "name": "💿 Unkomprimiert (WAV PCM 44.1 kHz)",
+        "extension": ".wav",
+        "codec": "pcm_s16le",
+        "channels": 1,
+        "sample_rate": 44100,
+        "bitrate": None,
+        "faststart": False,
+        "desc": "Verlustfreie Studio-Qualität"
+    },
+    "custom": {
+        "name": "⚙️ Benutzerdefiniert...",
+        "extension": ".mp4",
+        "codec": "aac",
+        "channels": 1,
+        "sample_rate": 44100,
+        "bitrate": "64k",
+        "faststart": True,
+        "desc": "Individuelle Einstellungen festlegen"
+    }
+}
+
+
+def save_api_key(api_key: str):
+    """Save API key to .env file and environment."""
+    os.environ["GEMINI_API_KEY"] = api_key
+    set_key(str(ENV_FILE), "GEMINI_API_KEY", api_key)
+
+
+def get_api_key() -> str:
+    """Retrieve current API key."""
+    return os.getenv("GEMINI_API_KEY", "")
