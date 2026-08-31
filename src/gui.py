@@ -313,7 +313,7 @@ class GeminiTTSApp(ctk.CTk):
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
-        # Audio-Tags Toolbar
+        # Audio-Tags Toolbar (Responsive 2-Row Grid)
         tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
         tag_section_frame.pack(fill="x", padx=18, pady=(0, 14))
 
@@ -327,6 +327,7 @@ class GeminiTTSApp(ctk.CTk):
 
         tag_buttons_frame = ctk.CTkFrame(tag_section_frame, fg_color="transparent")
         tag_buttons_frame.pack(fill="x", anchor="w")
+        tag_buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         tags_display_list = [
             ("[lachen]", "+ [lachen]"),
@@ -341,7 +342,9 @@ class GeminiTTSApp(ctk.CTk):
             ("[schnell]", "+ [schnell]"),
         ]
 
-        for tag_code, label_text in tags_display_list:
+        for i, (tag_code, label_text) in enumerate(tags_display_list):
+            row_idx = i // 5
+            col_idx = i % 5
             btn = ctk.CTkButton(
                 tag_buttons_frame,
                 text=label_text,
@@ -355,7 +358,7 @@ class GeminiTTSApp(ctk.CTk):
                 border_width=1.5,
                 border_color=("#64748B", "#38BDF8")
             )
-            btn.pack(side="left", padx=3, pady=2)
+            btn.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="ew")
 
         # 2B: Batch Card (Instantiated, packed only in batch mode)
         self.batch_card = ctk.CTkFrame(
