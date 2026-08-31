@@ -1,5 +1,5 @@
 """
-Modern GUI for Gemini TTS Interface using CustomTkinter
+Modern, high-contrast GUI for Gemini TTS Interface using CustomTkinter
 """
 
 import os
@@ -27,8 +27,21 @@ from .audio_converter import convert_audio, get_command_preview
 from .player import AudioPlayer
 
 
+# Set appearance mode and color theme
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+# Typography & Color Constants for High Readability
+FONT_FAMILY = "Segoe UI"
+COLOR_PRIMARY_TEXT = ("#111827", "#F9FAFB")       # Crisp dark / white
+COLOR_MUTED_TEXT = ("#4B5563", "#9CA3AF")         # Readable secondary text
+COLOR_ACCENT = "#2563EB"                           # Blue accent
+COLOR_ACCENT_HOVER = "#1D4ED8"
+COLOR_TAG_BG = ("#E5E7EB", "#374151")             # Tag button background
+COLOR_TAG_HOVER = ("#D1D5DB", "#4B5563")          # Tag button hover
+COLOR_TAG_TEXT = ("#1F2937", "#F3F4F6")           # Tag button text
+COLOR_CARD_BG = ("#FFFFFF", "#1E2430")            # Clean card background
+COLOR_CARD_BORDER = ("#E5E7EB", "#2D3748")
 
 
 class APIKeyDialog(ctk.CTkToplevel):
@@ -37,64 +50,68 @@ class APIKeyDialog(ctk.CTkToplevel):
     def __init__(self, parent, on_save_callback):
         super().__init__(parent)
         self.title("Gemini API-Key Einstellungen")
-        self.geometry("520x240")
+        self.geometry("540x260")
         self.resizable(False, False)
         self.on_save_callback = on_save_callback
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # Container frame
-        frame = ctk.CTkFrame(self, corner_radius=10)
+        frame = ctk.CTkFrame(self, corner_radius=12, fg_color=COLOR_CARD_BG)
         frame.pack(padx=20, pady=20, fill="both", expand=True)
 
         lbl = ctk.CTkLabel(
             frame,
-            text="🔑 Google Gemini API-Key",
-            font=ctk.CTkFont(size=16, weight="bold")
+            text="Google Gemini API-Key",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=17, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        lbl.pack(pady=(15, 5))
+        lbl.pack(pady=(16, 6))
 
         desc = ctk.CTkLabel(
             frame,
             text="Trage hier deinen API-Key aus Google AI Studio ein.\nDer Key wird sicher in deiner lokalen .env Datei gespeichert.",
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT,
+            justify="center"
         )
-        desc.pack(pady=(0, 10))
+        desc.pack(pady=(0, 12))
 
         self.key_entry = ctk.CTkEntry(
             frame,
             placeholder_text="AQ... oder AIzaSy...",
             show="*",
-            width=400,
-            height=35
+            width=440,
+            height=38,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13)
         )
-        self.key_entry.pack(pady=5)
+        self.key_entry.pack(pady=6)
         self.key_entry.insert(0, get_api_key())
 
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=(15, 10))
+        btn_frame.pack(pady=(16, 10))
 
         save_btn = ctk.CTkButton(
             btn_frame,
             text="Speichern",
             command=self._save,
-            width=120,
-            fg_color="#1f6aa5",
-            hover_color="#144870"
+            width=130,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER
         )
-        save_btn.pack(side="left", padx=10)
+        save_btn.pack(side="left", padx=8)
 
         cancel_btn = ctk.CTkButton(
             btn_frame,
             text="Abbrechen",
             command=self.destroy,
             width=100,
-            fg_color="gray",
-            hover_color="#555"
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=("gray75", "gray35"),
+            hover_color=("gray65", "gray45"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        cancel_btn.pack(side="left", padx=10)
+        cancel_btn.pack(side="left", padx=8)
 
         self.transient(parent)
         self.grab_set()
@@ -116,9 +133,9 @@ class GeminiTTSApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("🎙️ Gemini TTS Studio - Windows Interface")
-        self.geometry("980x860")
-        self.minsize(900, 750)
+        self.title("Gemini TTS Studio - Windows Interface")
+        self.geometry("1060x880")
+        self.minsize(980, 780)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
@@ -132,159 +149,200 @@ class GeminiTTSApp(ctk.CTk):
         self._update_ffmpeg_command_preview()
 
     def _build_ui(self):
-        # Master grid layout
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         # ------------------ Header Bar ------------------
-        header_frame = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color=("gray85", "gray17"))
+        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("gray90", "#161B22"))
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
         header_frame.grid_columnconfigure(1, weight=1)
 
         title_label = ctk.CTkLabel(
             header_frame,
             text="🎙️ Gemini TTS Studio",
-            font=ctk.CTkFont(size=20, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=21, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        title_label.grid(row=0, column=0, padx=20, pady=12, sticky="w")
+        title_label.grid(row=0, column=0, padx=22, pady=14, sticky="w")
 
-        # Key Status & Settings Button
+        # API-Key Badge & Settings Button
         self.key_status_btn = ctk.CTkButton(
             header_frame,
             text=self._get_key_status_text(),
             command=self._open_api_key_dialog,
-            width=160,
-            height=30,
-            fg_color="#2b3b4c",
-            hover_color="#3b4f66"
+            width=180,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=("#E5E7EB", "#21262D"),
+            hover_color=("#D1D5DB", "#30363D"),
+            text_color=COLOR_PRIMARY_TEXT,
+            border_width=1,
+            border_color=("gray70", "#30363D")
         )
-        self.key_status_btn.grid(row=0, column=2, padx=(0, 10), pady=12, sticky="e")
+        self.key_status_btn.grid(row=0, column=2, padx=(0, 12), pady=14, sticky="e")
 
         theme_switch = ctk.CTkSwitch(
             header_frame,
             text="Dark Mode",
             command=self._toggle_theme,
             onvalue="Dark",
-            offvalue="Light"
+            offvalue="Light",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_PRIMARY_TEXT
         )
         theme_switch.select()
-        theme_switch.grid(row=0, column=3, padx=15, pady=12, sticky="e")
+        theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
 
-        # ------------------ Main Scrollable Content ------------------
-        main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        main_scroll.grid(row=1, column=0, sticky="nsew", padx=20, pady=0)
-        main_scroll.grid_columnconfigure(0, weight=1)
+        # ------------------ Main Content Frame ------------------
+        main_content = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=0)
+        main_content.grid_columnconfigure(0, weight=1)
 
-        # 1. TEXT INPUT CARD
-        text_card = ctk.CTkFrame(main_scroll, corner_radius=10)
-        text_card.grid(row=0, column=0, sticky="ew", pady=(0, 15))
-        text_card.grid_columnconfigure(0, weight=1)
+        # 1. TEXT INPUT & AUDIO-TAGS CARD
+        text_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        text_card.pack(fill="x", pady=(0, 14))
 
         text_header_frame = ctk.CTkFrame(text_card, fg_color="transparent")
-        text_header_frame.pack(fill="x", padx=15, pady=(12, 5))
+        text_header_frame.pack(fill="x", padx=18, pady=(14, 6))
 
         text_title = ctk.CTkLabel(
             text_header_frame,
-            text="📝 Text für Sprachgenerierung",
-            font=ctk.CTkFont(size=15, weight="bold")
+            text="📝 Texteingabe & Regieanweisungen",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
         text_title.pack(side="left")
 
         self.char_counter_lbl = ctk.CTkLabel(
             text_header_frame,
             text="0 Zeichen | 0 Wörter",
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT
         )
         self.char_counter_lbl.pack(side="right")
 
         # Text input area
         self.text_input = ctk.CTkTextbox(
             text_card,
-            height=130,
-            font=ctk.CTkFont(size=14),
+            height=125,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14),
             wrap="word",
             border_width=1,
-            border_color=("gray70", "gray30")
+            border_color=("gray75", "#374151"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        self.text_input.pack(fill="x", padx=15, pady=5)
+        self.text_input.pack(fill="x", padx=18, pady=(0, 8))
         self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
         # Audio-Tags / Emotion Toolbar
         tag_section_frame = ctk.CTkFrame(text_card, fg_color="transparent")
-        tag_section_frame.pack(fill="x", padx=15, pady=(5, 12))
+        tag_section_frame.pack(fill="x", padx=18, pady=(0, 14))
 
         tag_title_lbl = ctk.CTkLabel(
             tag_section_frame,
-            text="🎭 Audio-Tags einfügen (Cursor-Position):",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#3b8ed0"
+            text="🎭 Audio-Tags einfügen (an Cursor-Position):",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=("#1D4ED8", "#60A5FA")
         )
-        tag_title_lbl.pack(anchor="w", pady=(0, 4))
+        tag_title_lbl.pack(anchor="w", pady=(0, 6))
 
-        # Flow of Tag buttons
+        # Tag buttons container
         tag_buttons_frame = ctk.CTkFrame(tag_section_frame, fg_color="transparent")
         tag_buttons_frame.pack(fill="x", anchor="w")
 
-        for tag_info in AUDIO_TAGS:
+        # Clean tags with clear high-contrast styling
+        tags_display_list = [
+            ("[lachen]", "+ [lachen]"),
+            ("[flüstern]", "+ [flüstern]"),
+            ("[traurig]", "+ [traurig]"),
+            ("[begeistert]", "+ [begeistert]"),
+            ("[Pause]", "+ [Pause]"),
+            ("[seufzen]", "+ [seufzen]"),
+            ("[wütend]", "+ [wütend]"),
+            ("[nachdenklich]", "+ [nachdenklich]"),
+            ("[langsam]", "+ [langsam]"),
+            ("[schnell]", "+ [schnell]"),
+        ]
+
+        for tag_code, label_text in tags_display_list:
             btn = ctk.CTkButton(
                 tag_buttons_frame,
-                text=tag_info["display"],
-                command=lambda t=tag_info["tag"]: self._insert_tag(t),
-                height=26,
-                font=ctk.CTkFont(size=11),
-                fg_color=("gray80", "gray25"),
-                hover_color=("gray70", "gray35"),
-                text_color=("black", "white")
+                text=label_text,
+                command=lambda t=tag_code: self._insert_tag(t),
+                height=28,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+                fg_color=COLOR_TAG_BG,
+                hover_color=COLOR_TAG_HOVER,
+                text_color=COLOR_TAG_TEXT,
+                corner_radius=6,
+                border_width=1,
+                border_color=("gray75", "#4B5563")
             )
             btn.pack(side="left", padx=3, pady=2)
 
         # 2. VOICE, LANGUAGE & MODEL CONFIG CARD
-        voice_card = ctk.CTkFrame(main_scroll, corner_radius=10)
-        voice_card.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        voice_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        voice_card.pack(fill="x", pady=(0, 14))
         voice_card.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Voice Selector
         voice_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        voice_box.grid(row=0, column=0, padx=15, pady=12, sticky="nsew")
+        voice_box.grid(row=0, column=0, padx=16, pady=14, sticky="nsew")
         
         ctk.CTkLabel(
             voice_box,
             text="🗣️ Stimme",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         ).pack(anchor="w", pady=(0, 4))
 
-        voice_options = [f"{v['id']} - {v['desc'].split('(')[-1].replace(')', '')}" for v in AVAILABLE_VOICES]
+        voice_options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in AVAILABLE_VOICES]
         self.voice_var = ctk.StringVar(value=voice_options[0])
         self.voice_menu = ctk.CTkOptionMenu(
             voice_box,
             values=voice_options,
             variable=self.voice_var,
             command=self._on_voice_changed,
-            height=32
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.voice_menu.pack(fill="x")
 
         self.voice_desc_lbl = ctk.CTkLabel(
             voice_box,
             text=AVAILABLE_VOICES[0]["desc"],
-            font=ctk.CTkFont(size=11),
-            text_color="gray",
-            wraplength=260,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT,
+            wraplength=270,
             justify="left"
         )
-        self.voice_desc_lbl.pack(anchor="w", pady=(4, 0))
+        self.voice_desc_lbl.pack(anchor="w", pady=(5, 0))
 
         # Language Selector
         lang_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        lang_box.grid(row=0, column=1, padx=15, pady=12, sticky="nsew")
+        lang_box.grid(row=0, column=1, padx=16, pady=14, sticky="nsew")
 
         ctk.CTkLabel(
             lang_box,
             text="🌐 Sprache",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         ).pack(anchor="w", pady=(0, 4))
 
         lang_options = [l["name"] for l in SUPPORTED_LANGUAGES]
@@ -293,25 +351,29 @@ class GeminiTTSApp(ctk.CTk):
             lang_box,
             values=lang_options,
             variable=self.lang_var,
-            height=32
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.lang_menu.pack(fill="x")
 
         ctk.CTkLabel(
             lang_box,
             text="Erkennt Sprache automatisch am Textinhalt.",
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        ).pack(anchor="w", pady=(4, 0))
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT
+        ).pack(anchor="w", pady=(5, 0))
 
         # Model Selector
         model_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        model_box.grid(row=0, column=2, padx=15, pady=12, sticky="nsew")
+        model_box.grid(row=0, column=2, padx=16, pady=14, sticky="nsew")
 
         ctk.CTkLabel(
             model_box,
-            text="🤖 Gemini Modell",
-            font=ctk.CTkFont(size=13, weight="bold")
+            text="🤖 Gemini TTS Modell",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         ).pack(anchor="w", pady=(0, 4))
 
         model_options = [m["name"] for m in AVAILABLE_MODELS]
@@ -320,39 +382,49 @@ class GeminiTTSApp(ctk.CTk):
             model_box,
             values=model_options,
             variable=self.model_var,
-            height=32
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.model_menu.pack(fill="x")
 
         ctk.CTkLabel(
             model_box,
-            text="Nativer Multimodal-Audio-Support.",
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        ).pack(anchor="w", pady=(4, 0))
+            text="Optimiert für ausdrucksstarke Sprachausgabe.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT
+        ).pack(anchor="w", pady=(5, 0))
 
         # 3. AUDIO FORMAT & EXPORT SETTINGS CARD
-        format_card = ctk.CTkFrame(main_scroll, corner_radius=10)
-        format_card.grid(row=2, column=0, sticky="ew", pady=(0, 15))
-        format_card.grid_columnconfigure(0, weight=1)
+        format_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        format_card.pack(fill="x", pady=(0, 14))
 
         format_header = ctk.CTkFrame(format_card, fg_color="transparent")
-        format_header.pack(fill="x", padx=15, pady=(12, 5))
+        format_header.pack(fill="x", padx=18, pady=(14, 6))
 
         ctk.CTkLabel(
             format_header,
             text="🎛️ Audioformat & FFmpeg Konvertierung",
-            font=ctk.CTkFont(size=15, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         ).pack(side="left")
 
         # Preset Selector
         preset_frame = ctk.CTkFrame(format_card, fg_color="transparent")
-        preset_frame.pack(fill="x", padx=15, pady=5)
+        preset_frame.pack(fill="x", padx=18, pady=4)
 
         ctk.CTkLabel(
             preset_frame,
             text="Format-Preset:",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         ).pack(side="left", padx=(0, 10))
 
         preset_names = [p["name"] for p in AUDIO_PRESETS.values()]
@@ -362,61 +434,105 @@ class GeminiTTSApp(ctk.CTk):
             values=preset_names,
             variable=self.preset_var,
             command=self._on_preset_changed,
-            width=480,
-            height=32
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.preset_menu.pack(side="left", fill="x", expand=True)
 
-        # Custom controls container (visible or adjusted based on preset)
-        self.custom_settings_frame = ctk.CTkFrame(format_card, fg_color=("gray90", "gray20"), corner_radius=8)
-        self.custom_settings_frame.pack(fill="x", padx=15, pady=8)
+        # Settings panel
+        self.custom_settings_frame = ctk.CTkFrame(
+            format_card,
+            fg_color=("gray95", "#161B22"),
+            corner_radius=8,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.custom_settings_frame.pack(fill="x", padx=18, pady=8)
         self.custom_settings_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         # Codec
-        ctk.CTkLabel(self.custom_settings_frame, text="Codec:", font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+        ctk.CTkLabel(
+            self.custom_settings_frame,
+            text="Codec:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+        
         self.codec_var = ctk.StringVar(value="aac")
         self.codec_menu = ctk.CTkOptionMenu(
             self.custom_settings_frame,
             values=["aac", "libmp3lame", "pcm_s16le"],
             variable=self.codec_var,
             command=lambda _: self._update_ffmpeg_command_preview(),
-            height=28
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.codec_menu.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="ew")
 
         # Channels
-        ctk.CTkLabel(self.custom_settings_frame, text="Kanäle:", font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=1, padx=8, pady=(6, 2), sticky="w")
+        ctk.CTkLabel(
+            self.custom_settings_frame,
+            text="Kanäle:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).grid(row=0, column=1, padx=8, pady=(6, 2), sticky="w")
+        
         self.channels_var = ctk.StringVar(value="Mono (1)")
         self.channels_menu = ctk.CTkOptionMenu(
             self.custom_settings_frame,
             values=["Mono (1)", "Stereo (2)"],
             variable=self.channels_var,
             command=lambda _: self._update_ffmpeg_command_preview(),
-            height=28
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.channels_menu.grid(row=1, column=1, padx=8, pady=(0, 8), sticky="ew")
 
         # Sample Rate
-        ctk.CTkLabel(self.custom_settings_frame, text="Abtastrate:", font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=2, padx=8, pady=(6, 2), sticky="w")
+        ctk.CTkLabel(
+            self.custom_settings_frame,
+            text="Abtastrate:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).grid(row=0, column=2, padx=8, pady=(6, 2), sticky="w")
+        
         self.rate_var = ctk.StringVar(value="44.100 Hz")
         self.rate_menu = ctk.CTkOptionMenu(
             self.custom_settings_frame,
             values=["44.100 Hz", "48.000 Hz", "24.000 Hz"],
             variable=self.rate_var,
             command=lambda _: self._update_ffmpeg_command_preview(),
-            height=28
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.rate_menu.grid(row=1, column=2, padx=8, pady=(0, 8), sticky="ew")
 
         # Bitrate
-        ctk.CTkLabel(self.custom_settings_frame, text="Datenrate:", font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=3, padx=8, pady=(6, 2), sticky="w")
+        ctk.CTkLabel(
+            self.custom_settings_frame,
+            text="Datenrate:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).grid(row=0, column=3, padx=8, pady=(6, 2), sticky="w")
+        
         self.bitrate_var = ctk.StringVar(value="64 kbit/s")
         self.bitrate_menu = ctk.CTkOptionMenu(
             self.custom_settings_frame,
             values=["64 kbit/s", "96 kbit/s", "128 kbit/s", "192 kbit/s", "320 kbit/s"],
             variable=self.bitrate_var,
             command=lambda _: self._update_ffmpeg_command_preview(),
-            height=28
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color="#FFFFFF"
         )
         self.bitrate_menu.grid(row=1, column=3, padx=8, pady=(0, 8), sticky="ew")
 
@@ -427,91 +543,112 @@ class GeminiTTSApp(ctk.CTk):
             text="+faststart (Web-Streaming)",
             variable=self.faststart_var,
             command=self._update_ffmpeg_command_preview,
-            font=ctk.CTkFont(size=11)
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
         self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
 
         # Command Preview Box
         preview_frame = ctk.CTkFrame(format_card, fg_color="transparent")
-        preview_frame.pack(fill="x", padx=15, pady=(2, 12))
+        preview_frame.pack(fill="x", padx=18, pady=(2, 14))
 
         ctk.CTkLabel(
             preview_frame,
             text="FFmpeg-Befehl:",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="gray"
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w")
 
         self.cmd_preview_entry = ctk.CTkEntry(
             preview_frame,
-            font=ctk.CTkFont(family="Consolas", size=11),
-            height=28,
-            state="normal"
+            font=ctk.CTkFont(family="Consolas", size=12),
+            height=30,
+            text_color=("#111827", "#E2E8F0"),
+            fg_color=("gray95", "#0D1117"),
+            border_color=("gray75", "#30363D")
         )
         self.cmd_preview_entry.pack(fill="x", pady=(2, 0))
 
-        # 4. ACTION & GENERATION
-        action_card = ctk.CTkFrame(main_scroll, corner_radius=10)
-        action_card.grid(row=3, column=0, sticky="ew", pady=(0, 15))
-        action_card.grid_columnconfigure(0, weight=1)
+        # 4. ACTION & GENERATION BUTTON
+        action_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        action_card.pack(fill="x", pady=(0, 14))
 
         self.generate_btn = ctk.CTkButton(
             action_card,
             text="⚡ Sprache generieren & konvertieren",
             command=self._start_generation_thread,
-            height=45,
-            font=ctk.CTkFont(size=15, weight="bold"),
-            fg_color="#28a745",
-            hover_color="#218838"
+            height=46,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            fg_color="#10B981",
+            hover_color="#059669",
+            text_color="#FFFFFF"
         )
-        self.generate_btn.pack(fill="x", padx=15, pady=(15, 8))
+        self.generate_btn.pack(fill="x", padx=18, pady=(16, 8))
 
         self.status_lbl = ctk.CTkLabel(
             action_card,
             text="Bereit zur Sprachgenerierung.",
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
         )
-        self.status_lbl.pack(padx=15, pady=(0, 10))
+        self.status_lbl.pack(padx=18, pady=(0, 14))
 
         # 5. AUDIO PLAYER & EXPORT CARD
-        player_card = ctk.CTkFrame(main_scroll, corner_radius=10)
-        player_card.grid(row=4, column=0, sticky="ew", pady=(0, 20))
+        player_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        player_card.pack(fill="x", pady=(0, 18))
         player_card.grid_columnconfigure(1, weight=1)
 
         player_header = ctk.CTkLabel(
             player_card,
             text="🔊 Integrierter Audio-Player & Export",
-            font=ctk.CTkFont(size=15, weight="bold")
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=15, pady=(12, 10))
+        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=18, pady=(14, 10))
 
         # Controls row
         controls_frame = ctk.CTkFrame(player_card, fg_color="transparent")
-        controls_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=15, pady=0)
+        controls_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=0)
         controls_frame.grid_columnconfigure(2, weight=1)
 
         self.play_btn = ctk.CTkButton(
             controls_frame,
-            text="▶️ Abspielen",
+            text="▶ Abspielen",
             command=self._toggle_playback,
-            width=110,
-            height=34,
+            width=115,
+            height=36,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             state="disabled",
-            fg_color="#1f6aa5"
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER
         )
         self.play_btn.grid(row=0, column=0, padx=(0, 8))
 
         self.stop_btn = ctk.CTkButton(
             controls_frame,
-            text="⏹️ Stopp",
+            text="■ Stopp",
             command=self._stop_playback,
-            width=80,
-            height=34,
+            width=85,
+            height=36,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             state="disabled",
-            fg_color="gray"
+            fg_color=("gray70", "gray35"),
+            hover_color=("gray60", "gray45"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        self.stop_btn.grid(row=0, column=1, padx=(0, 15))
+        self.stop_btn.grid(row=0, column=1, padx=(0, 14))
 
         # Timeline slider
         self.timeline_slider = ctk.CTkSlider(
@@ -528,17 +665,24 @@ class GeminiTTSApp(ctk.CTk):
         self.time_lbl = ctk.CTkLabel(
             controls_frame,
             text="00:00 / 00:00",
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        self.time_lbl.grid(row=0, column=3, padx=(10, 15))
+        self.time_lbl.grid(row=0, column=3, padx=(10, 16))
 
         # Volume control
-        ctk.CTkLabel(controls_frame, text="🔈", font=ctk.CTkFont(size=14)).grid(row=0, column=4, padx=(0, 4))
+        ctk.CTkLabel(
+            controls_frame,
+            text="Lautstärke:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        ).grid(row=0, column=4, padx=(0, 6))
+        
         self.volume_slider = ctk.CTkSlider(
             controls_frame,
             from_=0.0,
             to=1.0,
-            width=90,
+            width=100,
             command=self._on_volume_changed
         )
         self.volume_slider.set(0.8)
@@ -549,13 +693,14 @@ class GeminiTTSApp(ctk.CTk):
             player_card,
             text="💾 Audiodatei speichern unter...",
             command=self._export_audio,
-            height=38,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#17a2b8",
-            hover_color="#138496",
+            height=40,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            text_color="#FFFFFF",
             state="disabled"
         )
-        self.export_btn.grid(row=2, column=0, columnspan=3, sticky="ew", padx=15, pady=(12, 15))
+        self.export_btn.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(14, 16))
 
     # ------------------ Helper Methods ------------------
 
@@ -590,7 +735,7 @@ class GeminiTTSApp(ctk.CTk):
         self._update_counters()
 
     def _on_voice_changed(self, choice: str):
-        voice_id = choice.split(" - ")[0]
+        voice_id = choice.split(" ")[0]
         for v in AVAILABLE_VOICES:
             if v["id"] == voice_id:
                 self.voice_desc_lbl.configure(text=v["desc"])
@@ -672,18 +817,17 @@ class GeminiTTSApp(ctk.CTk):
 
         self.is_generating = True
         self.generate_btn.configure(state="disabled", text="⏳ Generiere Audio mit Gemini...")
-        self.status_lbl.configure(text="Sende Anfrage an Gemini TTS API...", text_color="#17a2b8")
+        self.status_lbl.configure(text="Sende Anfrage an Gemini TTS API...", text_color="#0284C7")
         
         thread = threading.Thread(target=self._run_generation, args=(text,), daemon=True)
         thread.start()
 
     def _run_generation(self, text: str):
         try:
-            # 1. Voice & Model selection
-            voice_choice = self.voice_var.get().split(" - ")[0]
+            voice_choice = self.voice_var.get().split(" ")[0]
             
             selected_model_name = self.model_var.get()
-            model_id = "gemini-2.0-flash"
+            model_id = "gemini-2.5-flash-preview-tts"
             for m in AVAILABLE_MODELS:
                 if m["name"] == selected_model_name:
                     model_id = m["id"]
@@ -696,7 +840,6 @@ class GeminiTTSApp(ctk.CTk):
                     lang_id = l["id"]
                     break
 
-            # 2. Gemini TTS Generation
             self.status_lbl.configure(text=f"Generiere Sprache ({voice_choice}, Modell: {model_id})...")
             start_time = time.time()
             
@@ -708,7 +851,6 @@ class GeminiTTSApp(ctk.CTk):
             )
             self.current_generated_wav = raw_wav_path
 
-            # 3. Audio Conversion (FFmpeg)
             self.status_lbl.configure(text="Konvertiere Audio mit FFmpeg in Zielformat...")
             settings = self._get_current_encoding_settings()
             
@@ -728,10 +870,8 @@ class GeminiTTSApp(ctk.CTk):
             duration = time.time() - start_time
             file_size_kb = converted_path.stat().st_size / 1024.0
 
-            # 4. Load into player
             self.player.load(converted_path)
 
-            # Update UI on main thread
             self.after(0, self._on_generation_success, duration, file_size_kb, converted_path.name)
 
         except Exception as e:
@@ -742,18 +882,18 @@ class GeminiTTSApp(ctk.CTk):
         self.generate_btn.configure(state="normal", text="⚡ Sprache generieren & konvertieren")
         self.status_lbl.configure(
             text=f"✅ Erfolgreich generiert ({duration:.1f}s)! Datei: {filename} ({file_size_kb:.1f} KB)",
-            text_color="#28a745"
+            text_color="#10B981"
         )
-        self.play_btn.configure(state="normal", text="▶️ Abspielen")
+        self.play_btn.configure(state="normal", text="▶ Abspielen")
         self.stop_btn.configure(state="normal")
         self.export_btn.configure(state="normal")
         self.timeline_slider.configure(state="normal")
-        self._toggle_playback()  # Auto play preview
+        self._toggle_playback()
 
     def _on_generation_error(self, err_msg: str):
         self.is_generating = False
         self.generate_btn.configure(state="normal", text="⚡ Sprache generieren & konvertieren")
-        self.status_lbl.configure(text=f"❌ Fehler: {err_msg}", text_color="#dc3545")
+        self.status_lbl.configure(text=f"❌ Fehler: {err_msg}", text_color="#EF4444")
         messagebox.showerror("Fehler bei Sprachgenerierung", err_msg)
 
     # ------------------ Audio Player Controls ------------------
@@ -764,17 +904,17 @@ class GeminiTTSApp(ctk.CTk):
 
         if self.player.is_playing() and not self.player.is_paused():
             self.player.pause()
-            self.play_btn.configure(text="▶️ Fortsetzen")
+            self.play_btn.configure(text="▶ Fortsetzen")
         elif self.player.is_paused():
             self.player.resume()
-            self.play_btn.configure(text="⏸️ Pause")
+            self.play_btn.configure(text="⏸ Pause")
         else:
             self.player.play()
-            self.play_btn.configure(text="⏸️ Pause")
+            self.play_btn.configure(text="⏸ Pause")
 
     def _stop_playback(self):
         self.player.stop()
-        self.play_btn.configure(text="▶️ Abspielen")
+        self.play_btn.configure(text="▶ Abspielen")
         self.timeline_slider.set(0.0)
         self.time_lbl.configure(text=f"00:00 / {self._format_time(self.player.get_duration())}")
 
@@ -791,7 +931,7 @@ class GeminiTTSApp(ctk.CTk):
             self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
             
             if not self.player.is_playing() and not self.player.is_paused():
-                self.play_btn.configure(text="▶️ Abspielen")
+                self.play_btn.configure(text="▶ Abspielen")
                 self.timeline_slider.set(0.0)
         
         self.after(100, self._setup_player_timer)

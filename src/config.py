@@ -6,8 +6,14 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 
-# Paths
-BASE_DIR = Path(__file__).resolve().parent.parent
+import sys
+
+# Paths - support both frozen EXE and script mode
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+
 ENV_FILE = BASE_DIR / ".env"
 OUTPUT_DIR = BASE_DIR / "output"
 TEMP_DIR = BASE_DIR / "temp"
@@ -15,8 +21,10 @@ TEMP_DIR = BASE_DIR / "temp"
 OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR.mkdir(exist_ok=True)
 
-# Load environment variables
+# Load environment variables (from .env next to exe/script or current dir)
 load_dotenv(ENV_FILE)
+if not os.getenv("GEMINI_API_KEY") and (Path.cwd() / ".env").exists():
+    load_dotenv(Path.cwd() / ".env")
 
 # API Configuration
 DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY", "")
