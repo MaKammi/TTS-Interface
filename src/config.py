@@ -38,16 +38,26 @@ AVAILABLE_MODELS = [
     {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
 ]
 
-# Available Gemini Prebuilt Voices
+# Available Gemini Prebuilt Voices (Alle verfügbaren Stimmen inkl. Erinome)
 AVAILABLE_VOICES = [
+    {"id": "Erinome", "name": "Erinome", "desc": "Natürlich, sympathisch & klar (Weiblich)"},
     {"id": "Puck", "name": "Puck", "desc": "Freundlich & gesprächig (Neutral/Männlich)"},
     {"id": "Charon", "name": "Charon", "desc": "Tief, autoritär & informativ (Männlich)"},
-    {"id": "Kore", "name": "Kore", "desc": "Ruhig, klar & angenehm (Weiblich)"},
-    {"id": "Fenrir", "name": "Fenrir", "desc": "Kraftvoll & dynamisch (Männlich)"},
-    {"id": "Aoede", "name": "Aoede", "desc": "Melodisch, warm & erzählend (Weiblich)"},
-    {"id": "Leda", "name": "Leda", "desc": "Sanft & professionell (Weiblich)"},
-    {"id": "Orus", "name": "Orus", "desc": "Resonanzreich & präsent (Männlich)"},
-    {"id": "Zephyr", "name": "Zephyr", "desc": "Leicht, modern & lebendig (Neutral)"},
+    {"id": "Kore", "name": "Kore", "desc": "Ruhig, klar & besonnen (Weiblich)"},
+    {"id": "Fenrir", "name": "Fenrir", "desc": "Kraftvoll, dynamisch & markant (Männlich)"},
+    {"id": "Aoede", "name": "Aoede", "desc": "Melodisch, warm & lebendig (Weiblich)"},
+    {"id": "Leda", "name": "Leda", "desc": "Sanft, melodisch & professionell (Weiblich)"},
+    {"id": "Orus", "name": "Orus", "desc": "Warm, vertrauenswürdig & resonant (Männlich)"},
+    {"id": "Zephyr", "name": "Zephyr", "desc": "Leicht, modern & präzise (Neutral/Weiblich)"},
+    {"id": "Callirrhoe", "name": "Callirrhoe", "desc": "Sanft, getragen & einfühlsam (Weiblich)"},
+    {"id": "Despina", "name": "Despina", "desc": "Lebhaft, enthusiastisch & freundlich (Weiblich)"},
+    {"id": "Iapetus", "name": "Iapetus", "desc": "Tief, sonor & erzählerisch (Männlich)"},
+    {"id": "Algieba", "name": "Algieba", "desc": "Hell, dynamisch & ausdrucksstark (Weiblich)"},
+    {"id": "Algenib", "name": "Algenib", "desc": "Klar, artikuliert & souverän (Männlich)"},
+    {"id": "Lyra", "name": "Lyra", "desc": "Melodisch, harmonisch & warm (Weiblich)"},
+    {"id": "Sadaltager", "name": "Sadaltager", "desc": "Resonant, ruhig & ausgewogen (Männlich)"},
+    {"id": "Sadachbia", "name": "Sadachbia", "desc": "Ausdrucksstark, warm & präsent (Weiblich)"},
+    {"id": "Ursa", "name": "Ursa", "desc": "Kraftvoll, präsent & selbstbewusst (Weiblich)"},
 ]
 
 # Supported Languages
