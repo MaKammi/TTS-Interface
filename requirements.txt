@@ -1,0 +1,8 @@
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+customtkinter>=5.2.0
+pygame>=2.6.0
+imageio-ffmpeg>=0.5.1
+pillow>=10.0.0
+pydub>=0.25.1
+requests>=2.31.0
