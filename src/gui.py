@@ -1,12 +1,14 @@
 """
-Modern, high-contrast GUI for Gemini TTS Interface with Collapsible Format Settings & Crisp Controls
+Modern, high-contrast GUI for Gemini TTS Studio
+Includes Single-Text Mode with Document Importer and Full Batch / Document Queue Processing.
 """
 
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -25,6 +27,8 @@ from .config import (
 from .tts_service import GeminiTTSService
 from .audio_converter import convert_audio
 from .player import AudioPlayer
+from .document_parser import extract_text_from_file, split_into_chapters
+from .batch_processor import BatchProcessor, BatchItem
 
 
 ctk.set_appearance_mode("Dark")
@@ -158,17 +162,20 @@ class GeminiTTSApp(ctk.CTk):
         super().__init__()
 
         self.title("Gemini TTS Studio - Windows Interface")
-        self.geometry("1060x860")
-        self.minsize(800, 500)
+        self.geometry("1100x880")
+        self.minsize(850, 550)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
+        self.batch_processor = BatchProcessor()
         
         self.current_generated_wav: Optional[Path] = None
         self.current_converted_file: Optional[Path] = None
         self.is_generating = False
         self.is_user_scrubbing = False
         self.is_format_collapsed = True  # Collapsed by default
+        self.current_mode = "single"      # "single" or "batch"
+        self.batch_output_dir = OUTPUT_DIR / "batch_exports"
 
         self._build_ui()
         self._setup_player_timer()
@@ -223,9 +230,33 @@ class GeminiTTSApp(ctk.CTk):
         main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
         main_content.grid_columnconfigure(0, weight=1)
 
-        # 1. TEXT INPUT & AUDIO-TAGS CARD
+        # ------------------ Mode Selector (Segmented Button) ------------------
+        mode_frame = ctk.CTkFrame(main_content, fg_color="transparent")
+        mode_frame.pack(fill="x", pady=(0, 12))
+
+        self.mode_segmented = ctk.CTkSegmentedButton(
+            mode_frame,
+            values=["✍️ Einzeltext-Modus", "📂 Dokumenten- & Batch-Import"],
+            command=self._on_mode_switched,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            selected_color=COLOR_ACCENT,
+            selected_hover_color=COLOR_ACCENT_HOVER,
+            unselected_color=("#CBD5E1", "#1E293B"),
+            unselected_hover_color=("#94A3B8", "#334155"),
+            text_color="#FFFFFF",
+            height=38
+        )
+        self.mode_segmented.set("✍️ Einzeltext-Modus")
+        self.mode_segmented.pack(fill="x")
+
+        # -------------------------------------------------------------
+        # 1. SINGLE-TEXT CONTAINER
+        # -------------------------------------------------------------
+        self.single_container = ctk.CTkFrame(main_content, fg_color="transparent")
+        self.single_container.pack(fill="x")
+
         text_card = ctk.CTkFrame(
-            main_content,
+            self.single_container,
             corner_radius=12,
             fg_color=COLOR_CARD_BG,
             border_width=1.5,
@@ -243,6 +274,21 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_PRIMARY_TEXT
         )
         text_title.pack(side="left")
+
+        # Quick Document Loader Button
+        load_doc_btn = ctk.CTkButton(
+            text_header_frame,
+            text="📂 Dokument laden (.txt, .pdf, .docx, .md)",
+            command=self._load_document_to_single_text,
+            height=30,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=("#334155", "#0F172A"),
+            hover_color=("#1E293B", "#1E3A8A"),
+            text_color="#FFFFFF",
+            border_width=1.5,
+            border_color=("#64748B", "#38BDF8")
+        )
+        load_doc_btn.pack(side="right", padx=(10, 0))
 
         self.char_counter_lbl = ctk.CTkLabel(
             text_header_frame,
@@ -282,7 +328,6 @@ class GeminiTTSApp(ctk.CTk):
         tag_buttons_frame = ctk.CTkFrame(tag_section_frame, fg_color="transparent")
         tag_buttons_frame.pack(fill="x", anchor="w")
 
-        # High-Contrast Tag Chips
         tags_display_list = [
             ("[lachen]", "+ [lachen]"),
             ("[flüstern]", "+ [flüstern]"),
@@ -312,7 +357,248 @@ class GeminiTTSApp(ctk.CTk):
             )
             btn.pack(side="left", padx=3, pady=2)
 
-        # 2. VOICE, LANGUAGE & MODEL CONFIG CARD
+        # Single Action Card (Generate Single)
+        self.single_action_card = ctk.CTkFrame(
+            self.single_container,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.single_action_card.pack(fill="x", pady=(0, 10))
+
+        self.generate_btn = ctk.CTkButton(
+            self.single_action_card,
+            text="⚡ Sprache generieren & konvertieren",
+            command=self._start_generation_thread,
+            height=48,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            text_color="#FFFFFF",
+            text_color_disabled="#FFFFFF"
+        )
+        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
+
+        self.progress_bar = ctk.CTkProgressBar(
+            self.single_action_card,
+            height=10,
+            corner_radius=5,
+            progress_color="#38BDF8",
+            fg_color="#0F172A"
+        )
+        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.progress_bar.set(0.0)
+        self.progress_bar.pack_forget()
+
+        self.status_lbl = ctk.CTkLabel(
+            self.single_action_card,
+            text="Bereit zur Sprachgenerierung.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.status_lbl.pack(padx=18, pady=(0, 12))
+
+        # -------------------------------------------------------------
+        # 2. BATCH & DOCUMENT IMPORT CONTAINER
+        # -------------------------------------------------------------
+        self.batch_container = ctk.CTkFrame(main_content, fg_color="transparent")
+        # Hidden by default
+
+        batch_card = ctk.CTkFrame(
+            self.batch_container,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        batch_card.pack(fill="x", pady=(0, 10))
+
+        batch_header = ctk.CTkFrame(batch_card, fg_color="transparent")
+        batch_header.pack(fill="x", padx=18, pady=(14, 8))
+
+        ctk.CTkLabel(
+            batch_header,
+            text="📂 Dokumenten- & Stapelverarbeitung (Batch)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left")
+
+        # Toolbar
+        toolbar_frame = ctk.CTkFrame(batch_card, fg_color="transparent")
+        toolbar_frame.pack(fill="x", padx=18, pady=(0, 10))
+
+        add_files_btn = ctk.CTkButton(
+            toolbar_frame,
+            text="➕ Dateien hinzufügen...",
+            command=self._batch_add_files_dialog,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER,
+            text_color="#FFFFFF"
+        )
+        add_files_btn.pack(side="left", padx=(0, 8))
+
+        add_folder_btn = ctk.CTkButton(
+            toolbar_frame,
+            text="📁 Ordner importieren...",
+            command=self._batch_add_folder_dialog,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            text_color="#FFFFFF"
+        )
+        add_folder_btn.pack(side="left", padx=(0, 8))
+
+        clear_btn = ctk.CTkButton(
+            toolbar_frame,
+            text="🗑️ Liste leeren",
+            command=self._batch_clear_queue,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#475569",
+            hover_color="#334155",
+            text_color="#FFFFFF"
+        )
+        clear_btn.pack(side="left")
+
+        # Options Row (Chapter Splitting & Output Directory)
+        options_frame = ctk.CTkFrame(
+            batch_card,
+            fg_color=("gray95", "#0F172A"),
+            corner_radius=8,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        options_frame.pack(fill="x", padx=18, pady=(0, 10))
+
+        self.batch_split_var = ctk.BooleanVar(value=True)
+        split_check = ctk.CTkCheckBox(
+            options_frame,
+            text="Lange Dokumente automatisch in Kapitel aufteilen (# Überschriften)",
+            variable=self.batch_split_var,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        split_check.pack(anchor="w", padx=12, pady=(10, 6))
+
+        outdir_row = ctk.CTkFrame(options_frame, fg_color="transparent")
+        outdir_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(
+            outdir_row,
+            text="Ausgabe-Ordner:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left", padx=(0, 8))
+
+        self.batch_outdir_lbl = ctk.CTkLabel(
+            outdir_row,
+            text=str(self.batch_output_dir),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=("#1D4ED8", "#38BDF8")
+        )
+        self.batch_outdir_lbl.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        change_outdir_btn = ctk.CTkButton(
+            outdir_row,
+            text="Ändern...",
+            command=self._batch_choose_outdir,
+            width=80,
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=("#334155", "#1E293B"),
+            hover_color=("#1E293B", "#334155"),
+            text_color="#FFFFFF"
+        )
+        change_outdir_btn.pack(side="right", padx=(0, 6))
+
+        open_outdir_btn = ctk.CTkButton(
+            outdir_row,
+            text="📂 Ordner öffnen",
+            command=self._batch_open_outdir,
+            width=110,
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=("#334155", "#1E293B"),
+            hover_color=("#1E293B", "#334155"),
+            text_color="#FFFFFF"
+        )
+        open_outdir_btn.pack(side="right", padx=(0, 6))
+
+        # Batch Queue Table / List
+        self.queue_frame = ctk.CTkScrollableFrame(
+            batch_card,
+            height=160,
+            fg_color=("gray90", "#0F172A"),
+            corner_radius=8,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.queue_frame.pack(fill="x", padx=18, pady=(0, 10))
+
+        self.queue_empty_lbl = ctk.CTkLabel(
+            self.queue_frame,
+            text="Keine Dateien in der Warteschlange. Klicke auf '➕ Dateien hinzufügen...', um Dokumente (.txt, .pdf, .docx, .md, .srt) zu laden.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.queue_empty_lbl.pack(pady=20)
+
+        # Batch Execution Buttons & Progress
+        batch_action_frame = ctk.CTkFrame(batch_card, fg_color="transparent")
+        batch_action_frame.pack(fill="x", padx=18, pady=(0, 14))
+
+        self.batch_start_btn = ctk.CTkButton(
+            batch_action_frame,
+            text="⚡ Alle Dateien in Warteschlange generieren",
+            command=self._batch_start_processing,
+            height=46,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            text_color="#FFFFFF"
+        )
+        self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.batch_cancel_btn = ctk.CTkButton(
+            batch_action_frame,
+            text="⏹ Abbrechen",
+            command=self._batch_cancel,
+            height=46,
+            width=110,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            fg_color="#DC2626",
+            hover_color="#B91C1C",
+            text_color="#FFFFFF",
+            state="disabled"
+        )
+        self.batch_cancel_btn.pack(side="right")
+
+        self.batch_progress_bar = ctk.CTkProgressBar(
+            batch_card,
+            height=10,
+            corner_radius=5,
+            progress_color="#38BDF8",
+            fg_color="#0F172A"
+        )
+        self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.batch_progress_bar.set(0.0)
+        self.batch_progress_bar.pack_forget()
+
+        self.batch_status_lbl = ctk.CTkLabel(
+            batch_card,
+            text="Warteschlange bereit.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.batch_status_lbl.pack(padx=18, pady=(0, 12))
+
+        # -------------------------------------------------------------
+        # 3. COMMON CONFIGURATION CARDS (VOICE, LANGUAGE, MODEL & AUDIOFORMAT)
+        # -------------------------------------------------------------
         voice_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -429,7 +715,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
 
-        # 3. COLLAPSIBLE AUDIO FORMAT & EXPORT SETTINGS CARD
+        # Collapsible Audio Format Card
         self.format_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -599,50 +885,9 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
 
-        # 4. ACTION & GENERATION (With Progress Bar)
-        action_card = ctk.CTkFrame(
-            main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
-        )
-        action_card.pack(fill="x", pady=(0, 10))
-
-        self.generate_btn = ctk.CTkButton(
-            action_card,
-            text="⚡ Sprache generieren & konvertieren",
-            command=self._start_generation_thread,
-            height=48,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
-            fg_color="#059669",
-            hover_color="#047857",
-            text_color="#FFFFFF",
-            text_color_disabled="#FFFFFF"
-        )
-        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
-
-        # Progress Bar (Animates during generation)
-        self.progress_bar = ctk.CTkProgressBar(
-            action_card,
-            height=10,
-            corner_radius=5,
-            progress_color="#38BDF8",
-            fg_color="#0F172A"
-        )
-        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
-        self.progress_bar.set(0.0)
-        self.progress_bar.pack_forget()
-
-        self.status_lbl = ctk.CTkLabel(
-            action_card,
-            text="Bereit zur Sprachgenerierung.",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_MUTED_TEXT
-        )
-        self.status_lbl.pack(padx=18, pady=(0, 12))
-
-        # 5. AUDIO PLAYER & EXPORT CARD
+        # -------------------------------------------------------------
+        # 4. AUDIO PLAYER & EXPORT CARD
+        # -------------------------------------------------------------
         player_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -759,7 +1004,284 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.export_btn.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(14, 16))
 
-    # ------------------ Helper Methods ------------------
+    # ------------------ Mode Switching ------------------
+
+    def _on_mode_switched(self, mode_value: str):
+        if "Einzeltext" in mode_value:
+            self.current_mode = "single"
+            self.batch_container.pack_forget()
+            self.single_container.pack(fill="x", before=self.format_card)
+        else:
+            self.current_mode = "batch"
+            self.single_container.pack_forget()
+            self.batch_container.pack(fill="x", before=self.format_card)
+
+    # ------------------ Document Importer (Single Text) ------------------
+
+    def _load_document_to_single_text(self):
+        """Allows user to pick a document and places its content in the single text box."""
+        file_path = filedialog.askopenfilename(
+            title="Dokument für Einzeltext laden",
+            filetypes=[
+                ("Dokumente (*.txt, *.md, *.pdf, *.docx, *.srt)", "*.txt *.md *.pdf *.docx *.srt"),
+                ("Textdateien (*.txt)", "*.txt"),
+                ("Markdown (*.md)", "*.md"),
+                ("PDF Dokumente (*.pdf)", "*.pdf"),
+                ("Word Dokumente (*.docx)", "*.docx"),
+                ("Untertitel (*.srt)", "*.srt"),
+                ("Alle Dateien", "*.*")
+            ]
+        )
+        if not file_path:
+            return
+
+        try:
+            extracted = extract_text_from_file(Path(file_path))
+            if not extracted:
+                messagebox.showwarning("Hinweis", "Aus der Datei konnte kein Text extrahiert werden.")
+                return
+
+            self.text_input.delete("0.0", "end")
+            self.text_input.insert("0.0", extracted)
+            self._update_counters()
+            messagebox.showinfo("Import erfolgreich", f"Text aus '{Path(file_path).name}' ({len(extracted):,} Zeichen) wurde erfolgreich ins Textfeld geladen!")
+        except Exception as e:
+            messagebox.showerror("Fehler beim Dokumenten-Import", f"Die Datei konnte nicht geladen werden:\n{e}")
+
+    # ------------------ Batch Mode Actions ------------------
+
+    def _batch_add_files_dialog(self):
+        """Allows multi-selecting files and adds them to batch queue."""
+        files = filedialog.askopenfilenames(
+            title="Dateien für Stapelverarbeitung auswählen",
+            filetypes=[
+                ("Dokumente (*.txt, *.md, *.pdf, *.docx, *.srt)", "*.txt *.md *.pdf *.docx *.srt"),
+                ("Alle Dateien", "*.*")
+            ]
+        )
+        if not files:
+            return
+
+        split = self.batch_split_var.get()
+        added_count = 0
+        for f in files:
+            try:
+                items = self.batch_processor.add_file(Path(f), split_chapters=split)
+                added_count += len(items)
+            except Exception as e:
+                messagebox.showerror("Importfehler", f"Fehler bei '{Path(f).name}':\n{e}")
+
+        self._refresh_batch_queue_ui()
+        if added_count > 0:
+            self.batch_status_lbl.configure(text=f"{len(self.batch_processor.items)} Aufgabe(n) in der Warteschlange.", text_color=COLOR_PRIMARY_TEXT)
+
+    def _batch_add_folder_dialog(self):
+        """Allows selecting a folder and adds all supported documents."""
+        folder = filedialog.askdirectory(title="Ordner für Stapelverarbeitung auswählen")
+        if not folder:
+            return
+
+        split = self.batch_split_var.get()
+        items = self.batch_processor.add_folder(Path(folder), split_chapters=split)
+        self._refresh_batch_queue_ui()
+        if items:
+            self.batch_status_lbl.configure(text=f"{len(self.batch_processor.items)} Aufgabe(n) in der Warteschlange.", text_color=COLOR_PRIMARY_TEXT)
+        else:
+            messagebox.showinfo("Hinweis", "Im ausgewählten Ordner wurden keine passenden Dokumente gefunden.")
+
+    def _batch_clear_queue(self):
+        if self.batch_processor.is_running:
+            messagebox.showwarning("Hinweis", "Warteschlange kann während der laufenden Verarbeitung nicht geleert werden.")
+            return
+        self.batch_processor.clear_queue()
+        self._refresh_batch_queue_ui()
+        self.batch_status_lbl.configure(text="Warteschlange geleert.", text_color=COLOR_MUTED_TEXT)
+
+    def _batch_choose_outdir(self):
+        folder = filedialog.askdirectory(title="Zielordner für Batch-Export wählen", initialdir=str(self.batch_output_dir))
+        if folder:
+            self.batch_output_dir = Path(folder)
+            self.batch_outdir_lbl.configure(text=str(self.batch_output_dir))
+
+    def _batch_open_outdir(self):
+        self.batch_output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(self.batch_output_dir))
+        except Exception:
+            subprocess.Popen(["explorer", str(self.batch_output_dir)])
+
+    def _refresh_batch_queue_ui(self):
+        """Redraws the queue table with updated item states."""
+        for widget in self.queue_frame.winfo_children():
+            widget.destroy()
+
+        if not self.batch_processor.items:
+            self.queue_empty_lbl = ctk.CTkLabel(
+                self.queue_frame,
+                text="Keine Dateien in der Warteschlange. Klicke auf '➕ Dateien hinzufügen...', um Dokumente (.txt, .pdf, .docx, .md, .srt) zu laden.",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                text_color=COLOR_MUTED_TEXT
+            )
+            self.queue_empty_lbl.pack(pady=20)
+            return
+
+        for item in self.batch_processor.items:
+            item_row = ctk.CTkFrame(
+                self.queue_frame,
+                fg_color=("#CBD5E1", "#1E293B"),
+                corner_radius=6,
+                border_width=1,
+                border_color=COLOR_CARD_BORDER
+            )
+            item_row.pack(fill="x", padx=6, pady=3)
+            item_row.grid_columnconfigure(1, weight=1)
+
+            # Icon & Title
+            icon_lbl = ctk.CTkLabel(item_row, text="📄", font=ctk.CTkFont(size=14))
+            icon_lbl.grid(row=0, column=0, padx=(10, 6), pady=6)
+
+            title_txt = f"{item.title}  ({item.char_count:,} Zeichen | {item.word_count:,} Wörter)"
+            name_lbl = ctk.CTkLabel(
+                item_row,
+                text=title_txt,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+                text_color=COLOR_PRIMARY_TEXT,
+                anchor="w"
+            )
+            name_lbl.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+
+            # Status Badge
+            status_color = "#94A3B8"
+            if "Fertig" in item.status:
+                status_color = "#10B981"
+            elif "Fehler" in item.status:
+                status_color = "#EF4444"
+            elif "generiert" in item.status or "Konvertiere" in item.status:
+                status_color = "#38BDF8"
+
+            status_lbl = ctk.CTkLabel(
+                item_row,
+                text=item.status,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+                text_color=status_color
+            )
+            status_lbl.grid(row=0, column=2, padx=10, pady=6)
+
+            # Play Button for completed items
+            if item.output_audio and item.output_audio.exists():
+                play_item_btn = ctk.CTkButton(
+                    item_row,
+                    text="▶ Anhören",
+                    command=lambda path=item.output_audio: self._play_batch_item_audio(path),
+                    width=80,
+                    height=26,
+                    font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                    fg_color=COLOR_ACCENT,
+                    hover_color=COLOR_ACCENT_HOVER,
+                    text_color="#FFFFFF"
+                )
+                play_item_btn.grid(row=0, column=3, padx=6, pady=6)
+
+            # Remove button
+            if not self.batch_processor.is_running:
+                del_btn = ctk.CTkButton(
+                    item_row,
+                    text="✕",
+                    command=lambda it_id=item.id: self._remove_batch_item(it_id),
+                    width=28,
+                    height=26,
+                    font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                    fg_color="#DC2626",
+                    hover_color="#B91C1C",
+                    text_color="#FFFFFF"
+                )
+                del_btn.grid(row=0, column=4, padx=(0, 6), pady=6)
+
+    def _remove_batch_item(self, item_id: str):
+        self.batch_processor.remove_item(item_id)
+        self._refresh_batch_queue_ui()
+        self.batch_status_lbl.configure(text=f"{len(self.batch_processor.items)} Aufgabe(n) in der Warteschlange.", text_color=COLOR_PRIMARY_TEXT)
+
+    def _play_batch_item_audio(self, audio_path: Path):
+        self.current_converted_file = audio_path
+        self.player.load(audio_path)
+        self.play_btn.configure(state="normal", text="▶ Abspielen")
+        self.stop_btn.configure(state="normal")
+        self.export_btn.configure(state="normal")
+        self.timeline_slider.configure(state="normal")
+        self._toggle_playback()
+
+    def _batch_start_processing(self):
+        if not self.batch_processor.items:
+            messagebox.showwarning("Hinweis", "Keine Dateien in der Warteschlange vorhanden.")
+            return
+
+        if not get_api_key():
+            self._open_api_key_dialog()
+            return
+
+        voice_choice = self.voice_var.get().split(" ")[0]
+        selected_model_name = self.model_var.get()
+        model_id = "gemini-3.1-flash-tts-preview"
+        for m in AVAILABLE_MODELS:
+            if m["name"] == selected_model_name:
+                model_id = m["id"]
+                break
+
+        selected_lang_name = self.lang_var.get()
+        lang_id = "auto"
+        for l in SUPPORTED_LANGUAGES:
+            if l["name"] == selected_lang_name:
+                lang_id = l["id"]
+                break
+
+        encoding_settings = self._get_current_encoding_settings()
+
+        self.batch_start_btn.configure(state="disabled", text="⏳ Batch-Generierung läuft...")
+        self.batch_cancel_btn.configure(state="normal")
+        self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.batch_progress_bar.set(0.0)
+
+        self.batch_processor.process_queue(
+            tts_service=self.tts_service,
+            voice_name=voice_choice,
+            model=model_id,
+            language=lang_id,
+            encoding_settings=encoding_settings,
+            output_directory=self.batch_output_dir,
+            on_item_update=lambda item: self.after(0, self._refresh_batch_queue_ui),
+            on_batch_update=lambda curr, total, prog: self.after(0, self._on_batch_progress_ui, curr, total, prog),
+            on_batch_complete=lambda items: self.after(0, self._on_batch_finished_ui, items)
+        )
+
+    def _on_batch_progress_ui(self, current: int, total: int, prog_val: float):
+        self.batch_progress_bar.set(prog_val)
+        self.batch_status_lbl.configure(
+            text=f"Verarbeite Aufgabe {current} von {total}...",
+            text_color="#38BDF8"
+        )
+
+    def _on_batch_finished_ui(self, items: List[BatchItem]):
+        self.batch_start_btn.configure(state="normal", text="⚡ Alle Dateien in Warteschlange generieren")
+        self.batch_cancel_btn.configure(state="disabled")
+        self.batch_progress_bar.set(1.0)
+        self.after(1000, lambda: self.batch_progress_bar.pack_forget())
+        
+        success_count = sum(1 for i in items if i.status == "Fertig ✅")
+        self.batch_status_lbl.configure(
+            text=f"✅ Batch abgeschlossen! {success_count} von {len(items)} Dateien erfolgreich generiert.",
+            text_color="#10B981"
+        )
+        self._refresh_batch_queue_ui()
+        messagebox.showinfo("Batch abgeschlossen", f"Stapelverarbeitung abgeschlossen!\n{success_count} von {len(items)} Audiodateien wurden in '{self.batch_output_dir.name}' gespeichert.")
+
+    def _batch_cancel(self):
+        if self.batch_processor.is_running:
+            self.batch_processor.cancel()
+            self.batch_status_lbl.configure(text="Abbruch angefordert... bitte warten.", text_color="#EF4444")
+            self.batch_cancel_btn.configure(state="disabled")
+
+    # ------------------ Collapsible Format Helper Methods ------------------
 
     def _toggle_format_panel(self):
         """Toggle collapsible Audio Format settings panel."""
@@ -797,7 +1319,7 @@ class GeminiTTSApp(ctk.CTk):
         content = self.text_input.get("0.0", "end").strip()
         chars = len(content)
         words = len(content.split()) if chars > 0 else 0
-        self.char_counter_lbl.configure(text=f"{chars} Zeichen | {words} Wörter")
+        self.char_counter_lbl.configure(text=f"{chars:,} Zeichen | {words:,} Wörter")
 
     def _insert_tag(self, tag: str):
         self.text_input.insert("insert", f" {tag} ")
@@ -853,7 +1375,7 @@ class GeminiTTSApp(ctk.CTk):
             "extension": ext
         }
 
-    # ------------------ Generation & Processing ------------------
+    # ------------------ Single Generation & Processing ------------------
 
     def _start_generation_thread(self):
         if self.is_generating:

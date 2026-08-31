@@ -1,6 +1,7 @@
 """
 PyInstaller Build Script for Gemini TTS Studio
 Creates a standalone Windows Executable (.exe) with automatic lock detection
+and bundles CustomTkinter, Pygame, FFmpeg, pypdf, and python-docx.
 """
 
 import os
@@ -45,6 +46,8 @@ def build_executable():
         "--collect-all=customtkinter",
         "--collect-all=imageio_ffmpeg",
         "--collect-all=pygame",
+        "--collect-all=pypdf",
+        "--collect-all=docx",
         "--add-data=.env.example;.",
         "main.py"
     ]
