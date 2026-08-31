@@ -125,6 +125,32 @@ class APIKeyDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+class AutoScrollableFrame(ctk.CTkScrollableFrame):
+    """
+    Intelligent ScrollableFrame that automatically hides its scrollbar
+    when all elements fit inside the window, and reveals it smoothly
+    when the window is made smaller or content overflows.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._parent_canvas.configure(yscrollcommand=self._auto_handle_scroll)
+
+    def _auto_handle_scroll(self, first: str, last: str):
+        self._scrollbar.set(first, last)
+        try:
+            f = float(first)
+            l = float(last)
+            if f <= 0.001 and l >= 0.999:
+                if self._scrollbar.winfo_ismapped():
+                    self._scrollbar.grid_remove()
+            else:
+                if not self._scrollbar.winfo_ismapped():
+                    self._scrollbar.grid()
+        except Exception:
+            pass
+
+
 class GeminiTTSApp(ctk.CTk):
     """Main application window for Gemini TTS Interface."""
 
@@ -133,7 +159,7 @@ class GeminiTTSApp(ctk.CTk):
 
         self.title("Gemini TTS Studio - Windows Interface")
         self.geometry("1060x860")
-        self.minsize(960, 750)
+        self.minsize(800, 500)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
@@ -192,8 +218,8 @@ class GeminiTTSApp(ctk.CTk):
         theme_switch.select()
         theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
 
-        # ------------------ Main Content Frame (Scrollbar-Free) ------------------
-        main_content = ctk.CTkFrame(self, fg_color="transparent")
+        # ------------------ Main Auto-Scrollable Content Frame ------------------
+        main_content = AutoScrollableFrame(self, fg_color="transparent")
         main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
         main_content.grid_columnconfigure(0, weight=1)
 
