@@ -1,6 +1,7 @@
 """
 Modern, high-contrast GUI for Gemini TTS Studio
 Includes Single-Text Mode with Document Importer and Full Batch / Document Queue Processing.
+Rock-solid stable layout hierarchy where no elements jump or shift when switching tabs.
 """
 
 import os
@@ -230,9 +231,9 @@ class GeminiTTSApp(ctk.CTk):
         main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
         main_content.grid_columnconfigure(0, weight=1)
 
-        # ------------------ Mode Selector (Segmented Button) ------------------
+        # ------------------ 1. Mode Selector (Permanent Top) ------------------
         mode_frame = ctk.CTkFrame(main_content, fg_color="transparent")
-        mode_frame.pack(fill="x", pady=(0, 12))
+        mode_frame.pack(fill="x", pady=(0, 10))
 
         self.mode_segmented = ctk.CTkSegmentedButton(
             mode_frame,
@@ -249,22 +250,21 @@ class GeminiTTSApp(ctk.CTk):
         self.mode_segmented.set("✍️ Einzeltext-Modus")
         self.mode_segmented.pack(fill="x")
 
-        # -------------------------------------------------------------
-        # 1. SINGLE-TEXT CONTAINER
-        # -------------------------------------------------------------
-        self.single_container = ctk.CTkFrame(main_content, fg_color="transparent")
-        self.single_container.pack(fill="x")
+        # ------------------ 2. Input Container (Permanent Slot) ------------------
+        self.input_container = ctk.CTkFrame(main_content, fg_color="transparent")
+        self.input_container.pack(fill="x", pady=(0, 0))
 
-        text_card = ctk.CTkFrame(
-            self.single_container,
+        # 2A: Single-Text Card
+        self.single_text_card = ctk.CTkFrame(
+            self.input_container,
             corner_radius=12,
             fg_color=COLOR_CARD_BG,
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        text_card.pack(fill="x", pady=(0, 10))
+        self.single_text_card.pack(fill="x", pady=(0, 10))
 
-        text_header_frame = ctk.CTkFrame(text_card, fg_color="transparent")
+        text_header_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
         text_header_frame.pack(fill="x", padx=18, pady=(14, 6))
 
         text_title = ctk.CTkLabel(
@@ -300,7 +300,7 @@ class GeminiTTSApp(ctk.CTk):
 
         # Text input area
         self.text_input = ctk.CTkTextbox(
-            text_card,
+            self.single_text_card,
             height=130,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14),
             wrap="word",
@@ -314,7 +314,7 @@ class GeminiTTSApp(ctk.CTk):
         self._update_counters()
 
         # Audio-Tags Toolbar
-        tag_section_frame = ctk.CTkFrame(text_card, fg_color="transparent")
+        tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
         tag_section_frame.pack(fill="x", padx=18, pady=(0, 14))
 
         tag_title_lbl = ctk.CTkLabel(
@@ -357,64 +357,16 @@ class GeminiTTSApp(ctk.CTk):
             )
             btn.pack(side="left", padx=3, pady=2)
 
-        # Single Action Card (Generate Single)
-        self.single_action_card = ctk.CTkFrame(
-            self.single_container,
+        # 2B: Batch Card (Instantiated, packed only in batch mode)
+        self.batch_card = ctk.CTkFrame(
+            self.input_container,
             corner_radius=12,
             fg_color=COLOR_CARD_BG,
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        self.single_action_card.pack(fill="x", pady=(0, 10))
 
-        self.generate_btn = ctk.CTkButton(
-            self.single_action_card,
-            text="⚡ Sprache generieren & konvertieren",
-            command=self._start_generation_thread,
-            height=48,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
-            fg_color="#059669",
-            hover_color="#047857",
-            text_color="#FFFFFF",
-            text_color_disabled="#FFFFFF"
-        )
-        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
-
-        self.progress_bar = ctk.CTkProgressBar(
-            self.single_action_card,
-            height=10,
-            corner_radius=5,
-            progress_color="#38BDF8",
-            fg_color="#0F172A"
-        )
-        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
-        self.progress_bar.set(0.0)
-        self.progress_bar.pack_forget()
-
-        self.status_lbl = ctk.CTkLabel(
-            self.single_action_card,
-            text="Bereit zur Sprachgenerierung.",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_MUTED_TEXT
-        )
-        self.status_lbl.pack(padx=18, pady=(0, 12))
-
-        # -------------------------------------------------------------
-        # 2. BATCH & DOCUMENT IMPORT CONTAINER
-        # -------------------------------------------------------------
-        self.batch_container = ctk.CTkFrame(main_content, fg_color="transparent")
-        # Hidden by default
-
-        batch_card = ctk.CTkFrame(
-            self.batch_container,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
-        )
-        batch_card.pack(fill="x", pady=(0, 10))
-
-        batch_header = ctk.CTkFrame(batch_card, fg_color="transparent")
+        batch_header = ctk.CTkFrame(self.batch_card, fg_color="transparent")
         batch_header.pack(fill="x", padx=18, pady=(14, 8))
 
         ctk.CTkLabel(
@@ -425,7 +377,7 @@ class GeminiTTSApp(ctk.CTk):
         ).pack(side="left")
 
         # Toolbar
-        toolbar_frame = ctk.CTkFrame(batch_card, fg_color="transparent")
+        toolbar_frame = ctk.CTkFrame(self.batch_card, fg_color="transparent")
         toolbar_frame.pack(fill="x", padx=18, pady=(0, 10))
 
         add_files_btn = ctk.CTkButton(
@@ -466,7 +418,7 @@ class GeminiTTSApp(ctk.CTk):
 
         # Options Row (Chapter Splitting & Output Directory)
         options_frame = ctk.CTkFrame(
-            batch_card,
+            self.batch_card,
             fg_color=("gray95", "#0F172A"),
             corner_radius=8,
             border_width=1.5,
@@ -530,7 +482,7 @@ class GeminiTTSApp(ctk.CTk):
 
         # Batch Queue Table / List
         self.queue_frame = ctk.CTkScrollableFrame(
-            batch_card,
+            self.batch_card,
             height=160,
             fg_color=("gray90", "#0F172A"),
             corner_radius=8,
@@ -547,58 +499,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.queue_empty_lbl.pack(pady=20)
 
-        # Batch Execution Buttons & Progress
-        batch_action_frame = ctk.CTkFrame(batch_card, fg_color="transparent")
-        batch_action_frame.pack(fill="x", padx=18, pady=(0, 14))
-
-        self.batch_start_btn = ctk.CTkButton(
-            batch_action_frame,
-            text="⚡ Alle Dateien in Warteschlange generieren",
-            command=self._batch_start_processing,
-            height=46,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
-            fg_color="#059669",
-            hover_color="#047857",
-            text_color="#FFFFFF"
-        )
-        self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        self.batch_cancel_btn = ctk.CTkButton(
-            batch_action_frame,
-            text="⏹ Abbrechen",
-            command=self._batch_cancel,
-            height=46,
-            width=110,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-            fg_color="#DC2626",
-            hover_color="#B91C1C",
-            text_color="#FFFFFF",
-            state="disabled"
-        )
-        self.batch_cancel_btn.pack(side="right")
-
-        self.batch_progress_bar = ctk.CTkProgressBar(
-            batch_card,
-            height=10,
-            corner_radius=5,
-            progress_color="#38BDF8",
-            fg_color="#0F172A"
-        )
-        self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
-        self.batch_progress_bar.set(0.0)
-        self.batch_progress_bar.pack_forget()
-
-        self.batch_status_lbl = ctk.CTkLabel(
-            batch_card,
-            text="Warteschlange bereit.",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_MUTED_TEXT
-        )
-        self.batch_status_lbl.pack(padx=18, pady=(0, 12))
-
-        # -------------------------------------------------------------
-        # 3. COMMON CONFIGURATION CARDS (VOICE, LANGUAGE, MODEL & AUDIOFORMAT)
-        # -------------------------------------------------------------
+        # ------------------ 3. Permanent Voice & Language Card ------------------
         voice_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -715,7 +616,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
 
-        # Collapsible Audio Format Card
+        # ------------------ 4. Permanent Collapsible Audio Format Card ------------------
         self.format_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -885,9 +786,110 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
 
-        # -------------------------------------------------------------
-        # 4. AUDIO PLAYER & EXPORT CARD
-        # -------------------------------------------------------------
+        # ------------------ 5. Action Container (Permanent Slot) ------------------
+        self.action_container = ctk.CTkFrame(main_content, fg_color="transparent")
+        self.action_container.pack(fill="x", pady=(0, 0))
+
+        # 5A: Single-Text Action Card
+        self.single_action_card = ctk.CTkFrame(
+            self.action_container,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.single_action_card.pack(fill="x", pady=(0, 10))
+
+        self.generate_btn = ctk.CTkButton(
+            self.single_action_card,
+            text="⚡ Sprache generieren & konvertieren",
+            command=self._start_generation_thread,
+            height=48,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            text_color="#FFFFFF",
+            text_color_disabled="#FFFFFF"
+        )
+        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
+
+        self.progress_bar = ctk.CTkProgressBar(
+            self.single_action_card,
+            height=10,
+            corner_radius=5,
+            progress_color="#38BDF8",
+            fg_color="#0F172A"
+        )
+        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.progress_bar.set(0.0)
+        self.progress_bar.pack_forget()
+
+        self.status_lbl = ctk.CTkLabel(
+            self.single_action_card,
+            text="Bereit zur Sprachgenerierung.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.status_lbl.pack(padx=18, pady=(0, 12))
+
+        # 5B: Batch Action Card (Instantiated, packed only in batch mode)
+        self.batch_action_card = ctk.CTkFrame(
+            self.action_container,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+
+        batch_action_btn_row = ctk.CTkFrame(self.batch_action_card, fg_color="transparent")
+        batch_action_btn_row.pack(fill="x", padx=18, pady=(14, 8))
+
+        self.batch_start_btn = ctk.CTkButton(
+            batch_action_btn_row,
+            text="⚡ Alle Dateien in Warteschlange generieren",
+            command=self._batch_start_processing,
+            height=46,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            text_color="#FFFFFF"
+        )
+        self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.batch_cancel_btn = ctk.CTkButton(
+            batch_action_btn_row,
+            text="⏹ Abbrechen",
+            command=self._batch_cancel,
+            height=46,
+            width=110,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            fg_color="#DC2626",
+            hover_color="#B91C1C",
+            text_color="#FFFFFF",
+            state="disabled"
+        )
+        self.batch_cancel_btn.pack(side="right")
+
+        self.batch_progress_bar = ctk.CTkProgressBar(
+            self.batch_action_card,
+            height=10,
+            corner_radius=5,
+            progress_color="#38BDF8",
+            fg_color="#0F172A"
+        )
+        self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.batch_progress_bar.set(0.0)
+        self.batch_progress_bar.pack_forget()
+
+        self.batch_status_lbl = ctk.CTkLabel(
+            self.batch_action_card,
+            text="Warteschlange bereit.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.batch_status_lbl.pack(padx=18, pady=(0, 12))
+
+        # ------------------ 6. Permanent Audio Player & Export Card (Bottom) ------------------
         player_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -1004,17 +1006,22 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.export_btn.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(14, 16))
 
-    # ------------------ Mode Switching ------------------
+    # ------------------ Mode Switching (Zero Position Shift) ------------------
 
     def _on_mode_switched(self, mode_value: str):
+        """Switches between Single-Text and Batch mode in-place without moving other cards."""
         if "Einzeltext" in mode_value:
             self.current_mode = "single"
-            self.batch_container.pack_forget()
-            self.single_container.pack(fill="x", before=self.format_card)
+            self.batch_card.pack_forget()
+            self.batch_action_card.pack_forget()
+            self.single_text_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
+            self.single_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
         else:
             self.current_mode = "batch"
-            self.single_container.pack_forget()
-            self.batch_container.pack(fill="x", before=self.format_card)
+            self.single_text_card.pack_forget()
+            self.single_action_card.pack_forget()
+            self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
+            self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
 
     # ------------------ Document Importer (Single Text) ------------------
 
