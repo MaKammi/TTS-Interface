@@ -1,5 +1,5 @@
 """
-Audio player module using pygame.mixer with support for WAV/MP3/M4A/MP4 playback.
+Audio player module using pygame.mixer with support for WAV/MP3/M4A/MP4 playback and scrubbing.
 """
 
 import os
@@ -14,7 +14,7 @@ from .config import TEMP_DIR
 
 
 class AudioPlayer:
-    """Audio player for previewing generated audio files."""
+    """Audio player for previewing generated audio files with interactive scrubbing."""
 
     def __init__(self):
         self._is_initialized = False
@@ -25,7 +25,7 @@ class AudioPlayer:
         self._duration: float = 0.0
         self._start_time: float = 0.0
         self._pause_time: float = 0.0
-        self._elapsed_offset: float = 0.0
+        self._current_pos: float = 0.0
         self._volume: float = 0.8
         self._init_mixer()
 
@@ -54,7 +54,7 @@ class AudioPlayer:
         ext = src_path.suffix.lower()
 
         # Pygame mixer plays WAV, OGG, and MP3 natively.
-        # For MP4 / M4A containers, convert a temporary WAV/OGG copy for lossless player preview
+        # For MP4 / M4A containers, convert a temporary WAV copy for lossless player preview and seeking
         if ext in [".mp4", ".m4a", ".aac"]:
             temp_preview_wav = TEMP_DIR / f"preview_{src_path.stem}.wav"
             try:
@@ -69,7 +69,6 @@ class AudioPlayer:
                 )
                 self._playback_file = temp_preview_wav
             except Exception:
-                # Fallback to direct load attempt
                 self._playback_file = src_path
         else:
             self._playback_file = src_path
@@ -90,25 +89,26 @@ class AudioPlayer:
                     frames = wf.getnframes()
                     rate = wf.getframerate()
                     return frames / float(rate)
-            # Pygame Sound object can give length for mp3/wav
             sound = pygame.mixer.Sound(str(path))
             return sound.get_length()
         except Exception:
             return 0.0
 
-    def play(self):
-        """Start or restart audio playback."""
+    def play(self, start_pos: Optional[float] = None):
+        """Start audio playback from start or given position."""
         if not self._playback_file:
             return
         if not self._is_initialized:
             self._init_mixer()
 
+        pos = start_pos if start_pos is not None else 0.0
+        pos = max(0.0, min(self._duration, pos))
+
         try:
-            pygame.mixer.music.play()
+            pygame.mixer.music.play(start=pos)
             self._is_playing = True
             self._is_paused = False
-            self._start_time = time.time()
-            self._elapsed_offset = 0.0
+            self._start_time = time.time() - pos
         except Exception as e:
             print(f"Fehler bei der Audiowiedergabe: {e}")
 
@@ -125,6 +125,30 @@ class AudioPlayer:
             pygame.mixer.music.unpause()
             self._is_paused = False
             self._start_time += (time.time() - self._pause_time)
+
+    def seek(self, target_seconds: float):
+        """Seek to a specific time position in seconds."""
+        if not self._playback_file:
+            return
+        if not self._is_initialized:
+            self._init_mixer()
+
+        target_seconds = max(0.0, min(self._duration, target_seconds))
+
+        try:
+            if self._is_playing and not self._is_paused:
+                pygame.mixer.music.play(start=target_seconds)
+                self._start_time = time.time() - target_seconds
+            elif self._is_paused:
+                pygame.mixer.music.play(start=target_seconds)
+                pygame.mixer.music.pause()
+                self._start_time = time.time() - target_seconds
+                self._pause_time = time.time()
+            else:
+                # If stopped, start playing from the seeked position
+                self.play(start_pos=target_seconds)
+        except Exception as e:
+            print(f"Fehler beim Spulen: {e}")
 
     def toggle_play_pause(self):
         """Toggle between play, pause, and resume."""
@@ -145,7 +169,6 @@ class AudioPlayer:
         self._is_playing = False
         self._is_paused = False
         self._start_time = 0.0
-        self._elapsed_offset = 0.0
 
     def set_volume(self, volume: float):
         """Set volume (0.0 to 1.0)."""

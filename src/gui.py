@@ -1,5 +1,5 @@
 """
-Modern, high-contrast GUI for Gemini TTS Interface using CustomTkinter
+Modern, high-contrast GUI for Gemini TTS Interface with Progress Bar & Scrubbing Player
 """
 
 import os
@@ -23,11 +23,10 @@ from .config import (
     TEMP_DIR,
 )
 from .tts_service import GeminiTTSService
-from .audio_converter import convert_audio, get_command_preview
+from .audio_converter import convert_audio
 from .player import AudioPlayer
 
 
-# Set appearance mode and color theme
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
@@ -134,8 +133,8 @@ class GeminiTTSApp(ctk.CTk):
         super().__init__()
 
         self.title("Gemini TTS Studio - Windows Interface")
-        self.geometry("1060x880")
-        self.minsize(980, 780)
+        self.geometry("1060x860")
+        self.minsize(960, 760)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
@@ -143,10 +142,10 @@ class GeminiTTSApp(ctk.CTk):
         self.current_generated_wav: Optional[Path] = None
         self.current_converted_file: Optional[Path] = None
         self.is_generating = False
+        self.is_user_scrubbing = False
 
         self._build_ui()
         self._setup_player_timer()
-        self._update_ffmpeg_command_preview()
 
     def _build_ui(self):
         self.grid_columnconfigure(0, weight=1)
@@ -230,7 +229,7 @@ class GeminiTTSApp(ctk.CTk):
         # Text input area
         self.text_input = ctk.CTkTextbox(
             text_card,
-            height=125,
+            height=130,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14),
             wrap="word",
             border_width=1,
@@ -242,7 +241,7 @@ class GeminiTTSApp(ctk.CTk):
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
-        # Audio-Tags / Emotion Toolbar
+        # Audio-Tags Toolbar
         tag_section_frame = ctk.CTkFrame(text_card, fg_color="transparent")
         tag_section_frame.pack(fill="x", padx=18, pady=(0, 14))
 
@@ -254,11 +253,9 @@ class GeminiTTSApp(ctk.CTk):
         )
         tag_title_lbl.pack(anchor="w", pady=(0, 6))
 
-        # Tag buttons container
         tag_buttons_frame = ctk.CTkFrame(tag_section_frame, fg_color="transparent")
         tag_buttons_frame.pack(fill="x", anchor="w")
 
-        # Clean tags with clear high-contrast styling
         tags_display_list = [
             ("[lachen]", "+ [lachen]"),
             ("[flüstern]", "+ [flüstern]"),
@@ -365,7 +362,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
 
-        # Model Selector
+        # Model Selector (Defaults to Gemini 3.1 Flash TTS)
         model_box = ctk.CTkFrame(voice_card, fg_color="transparent")
         model_box.grid(row=0, column=2, padx=16, pady=14, sticky="nsew")
 
@@ -391,7 +388,7 @@ class GeminiTTSApp(ctk.CTk):
 
         ctk.CTkLabel(
             model_box,
-            text="Optimiert für ausdrucksstarke Sprachausgabe.",
+            text="Standard: Gemini 3.1 Flash TTS Engine.",
             font=ctk.CTkFont(family=FONT_FAMILY, size=11),
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
@@ -411,14 +408,14 @@ class GeminiTTSApp(ctk.CTk):
 
         ctk.CTkLabel(
             format_header,
-            text="🎛️ Audioformat & FFmpeg Konvertierung",
+            text="🎛️ Audioformat & Enkodierung",
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         ).pack(side="left")
 
         # Preset Selector
         preset_frame = ctk.CTkFrame(format_card, fg_color="transparent")
-        preset_frame.pack(fill="x", padx=18, pady=4)
+        preset_frame.pack(fill="x", padx=18, pady=(4, 10))
 
         ctk.CTkLabel(
             preset_frame,
@@ -441,7 +438,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.preset_menu.pack(side="left", fill="x", expand=True)
 
-        # Settings panel
+        # Settings panel (clean parameter view)
         self.custom_settings_frame = ctk.CTkFrame(
             format_card,
             fg_color=("gray95", "#161B22"),
@@ -449,7 +446,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1,
             border_color=COLOR_CARD_BORDER
         )
-        self.custom_settings_frame.pack(fill="x", padx=18, pady=8)
+        self.custom_settings_frame.pack(fill="x", padx=18, pady=(0, 14))
         self.custom_settings_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         # Codec
@@ -465,7 +462,6 @@ class GeminiTTSApp(ctk.CTk):
             self.custom_settings_frame,
             values=["aac", "libmp3lame", "pcm_s16le"],
             variable=self.codec_var,
-            command=lambda _: self._update_ffmpeg_command_preview(),
             height=28,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
@@ -486,7 +482,6 @@ class GeminiTTSApp(ctk.CTk):
             self.custom_settings_frame,
             values=["Mono (1)", "Stereo (2)"],
             variable=self.channels_var,
-            command=lambda _: self._update_ffmpeg_command_preview(),
             height=28,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
@@ -507,7 +502,6 @@ class GeminiTTSApp(ctk.CTk):
             self.custom_settings_frame,
             values=["44.100 Hz", "48.000 Hz", "24.000 Hz"],
             variable=self.rate_var,
-            command=lambda _: self._update_ffmpeg_command_preview(),
             height=28,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
@@ -528,7 +522,6 @@ class GeminiTTSApp(ctk.CTk):
             self.custom_settings_frame,
             values=["64 kbit/s", "96 kbit/s", "128 kbit/s", "192 kbit/s", "320 kbit/s"],
             variable=self.bitrate_var,
-            command=lambda _: self._update_ffmpeg_command_preview(),
             height=28,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
@@ -542,34 +535,12 @@ class GeminiTTSApp(ctk.CTk):
             self.custom_settings_frame,
             text="+faststart (Web-Streaming)",
             variable=self.faststart_var,
-            command=self._update_ffmpeg_command_preview,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
         self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
 
-        # Command Preview Box
-        preview_frame = ctk.CTkFrame(format_card, fg_color="transparent")
-        preview_frame.pack(fill="x", padx=18, pady=(2, 14))
-
-        ctk.CTkLabel(
-            preview_frame,
-            text="FFmpeg-Befehl:",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_MUTED_TEXT
-        ).pack(anchor="w")
-
-        self.cmd_preview_entry = ctk.CTkEntry(
-            preview_frame,
-            font=ctk.CTkFont(family="Consolas", size=12),
-            height=30,
-            text_color=("#111827", "#E2E8F0"),
-            fg_color=("gray95", "#0D1117"),
-            border_color=("gray75", "#30363D")
-        )
-        self.cmd_preview_entry.pack(fill="x", pady=(2, 0))
-
-        # 4. ACTION & GENERATION BUTTON
+        # 4. ACTION & GENERATION (With Progress Bar)
         action_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -590,6 +561,17 @@ class GeminiTTSApp(ctk.CTk):
             text_color="#FFFFFF"
         )
         self.generate_btn.pack(fill="x", padx=18, pady=(16, 8))
+
+        # Progress Bar (Animates during generation)
+        self.progress_bar = ctk.CTkProgressBar(
+            action_card,
+            height=10,
+            corner_radius=5,
+            progress_color=COLOR_ACCENT
+        )
+        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.progress_bar.set(0.0)
+        self.progress_bar.pack_forget()  # Hidden by default until generation starts
 
         self.status_lbl = ctk.CTkLabel(
             action_card,
@@ -650,16 +632,21 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.stop_btn.grid(row=0, column=1, padx=(0, 14))
 
-        # Timeline slider
+        # Interactive Playhead Timeline Slider
         self.timeline_slider = ctk.CTkSlider(
             controls_frame,
             from_=0.0,
             to=1.0,
-            number_of_steps=100,
-            state="disabled"
+            number_of_steps=200,
+            state="disabled",
+            command=self._on_seek_change
         )
         self.timeline_slider.set(0.0)
         self.timeline_slider.grid(row=0, column=2, sticky="ew", padx=10)
+
+        # Bind mouse press/release to handle dragging cleanly without timer jitter
+        self.timeline_slider.bind("<Button-1>", self._on_slider_press)
+        self.timeline_slider.bind("<ButtonRelease-1>", self._on_slider_release)
 
         # Time label
         self.time_lbl = ctk.CTkLabel(
@@ -729,7 +716,6 @@ class GeminiTTSApp(ctk.CTk):
         self.char_counter_lbl.configure(text=f"{chars} Zeichen | {words} Wörter")
 
     def _insert_tag(self, tag: str):
-        """Insert audio tag at current cursor position."""
         self.text_input.insert("insert", f" {tag} ")
         self.text_input.focus_set()
         self._update_counters()
@@ -756,7 +742,6 @@ class GeminiTTSApp(ctk.CTk):
         self.rate_var.set(f"{preset['sample_rate']:,}".replace(",", ".") + " Hz")
         self.bitrate_var.set(preset["bitrate"] + "bit/s" if preset["bitrate"] else "128 kbit/s")
         self.faststart_var.set(preset["faststart"])
-        self._update_ffmpeg_command_preview()
 
     def _get_current_encoding_settings(self) -> Dict[str, Any]:
         codec = self.codec_var.get()
@@ -766,7 +751,6 @@ class GeminiTTSApp(ctk.CTk):
         bitrate = self.bitrate_var.get().replace(" kbit/s", "k").replace(" ", "")
         faststart = self.faststart_var.get()
         
-        # Determine target extension
         if codec == "aac":
             ext = ".mp4" if "mp4" in self.preset_var.get().lower() else ".m4a"
         elif codec == "libmp3lame":
@@ -785,21 +769,6 @@ class GeminiTTSApp(ctk.CTk):
             "extension": ext
         }
 
-    def _update_ffmpeg_command_preview(self):
-        settings = self._get_current_encoding_settings()
-        cmd_str = get_command_preview(
-            input_file="eingabe.wav",
-            output_file=f"ausgabe{settings['extension']}",
-            codec=settings["codec"],
-            channels=settings["channels"],
-            sample_rate=settings["sample_rate"],
-            bitrate=settings["bitrate"],
-            faststart=settings["faststart"]
-        )
-        self.cmd_preview_entry.configure(state="normal")
-        self.cmd_preview_entry.delete(0, "end")
-        self.cmd_preview_entry.insert(0, cmd_str)
-
     # ------------------ Generation & Processing ------------------
 
     def _start_generation_thread(self):
@@ -817,17 +786,26 @@ class GeminiTTSApp(ctk.CTk):
 
         self.is_generating = True
         self.generate_btn.configure(state="disabled", text="⏳ Generiere Audio mit Gemini...")
-        self.status_lbl.configure(text="Sende Anfrage an Gemini TTS API...", text_color="#0284C7")
+        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.progress_bar.set(0.05)
+        self.status_lbl.configure(text="Initialisiere Sprachgenerierung...", text_color="#0284C7")
         
         thread = threading.Thread(target=self._run_generation, args=(text,), daemon=True)
         thread.start()
+
+    def _update_generation_progress(self, progress_val: float, message: str):
+        self.after(0, self._set_progress_ui, progress_val, message)
+
+    def _set_progress_ui(self, progress_val: float, message: str):
+        self.progress_bar.set(progress_val)
+        self.status_lbl.configure(text=message, text_color="#0284C7")
 
     def _run_generation(self, text: str):
         try:
             voice_choice = self.voice_var.get().split(" ")[0]
             
             selected_model_name = self.model_var.get()
-            model_id = "gemini-2.5-flash-preview-tts"
+            model_id = "gemini-3.1-flash-tts-preview"
             for m in AVAILABLE_MODELS:
                 if m["name"] == selected_model_name:
                     model_id = m["id"]
@@ -840,18 +818,19 @@ class GeminiTTSApp(ctk.CTk):
                     lang_id = l["id"]
                     break
 
-            self.status_lbl.configure(text=f"Generiere Sprache ({voice_choice}, Modell: {model_id})...")
             start_time = time.time()
             
+            # Generate speech with chunking & progress updates
             raw_wav_path = self.tts_service.generate_speech(
                 text=text,
                 voice_name=voice_choice,
                 model=model_id,
-                language=lang_id
+                language=lang_id,
+                progress_callback=self._update_generation_progress
             )
             self.current_generated_wav = raw_wav_path
 
-            self.status_lbl.configure(text="Konvertiere Audio mit FFmpeg in Zielformat...")
+            self._update_generation_progress(0.95, "Konvertiere Audio in Zielformat...")
             settings = self._get_current_encoding_settings()
             
             output_converted_path = OUTPUT_DIR / f"tts_output_{int(time.time())}{settings['extension']}"
@@ -879,6 +858,8 @@ class GeminiTTSApp(ctk.CTk):
 
     def _on_generation_success(self, duration: float, file_size_kb: float, filename: str):
         self.is_generating = False
+        self.progress_bar.set(1.0)
+        self.after(800, lambda: self.progress_bar.pack_forget())
         self.generate_btn.configure(state="normal", text="⚡ Sprache generieren & konvertieren")
         self.status_lbl.configure(
             text=f"✅ Erfolgreich generiert ({duration:.1f}s)! Datei: {filename} ({file_size_kb:.1f} KB)",
@@ -892,11 +873,31 @@ class GeminiTTSApp(ctk.CTk):
 
     def _on_generation_error(self, err_msg: str):
         self.is_generating = False
+        self.progress_bar.pack_forget()
         self.generate_btn.configure(state="normal", text="⚡ Sprache generieren & konvertieren")
         self.status_lbl.configure(text=f"❌ Fehler: {err_msg}", text_color="#EF4444")
         messagebox.showerror("Fehler bei Sprachgenerierung", err_msg)
 
-    # ------------------ Audio Player Controls ------------------
+    # ------------------ Audio Player Controls & Scrubbing ------------------
+
+    def _on_slider_press(self, event):
+        self.is_user_scrubbing = True
+
+    def _on_slider_release(self, event):
+        val = self.timeline_slider.get()
+        total = self.player.get_duration()
+        if total > 0:
+            target_sec = val * total
+            self.player.seek(target_sec)
+        self.is_user_scrubbing = False
+
+    def _on_seek_change(self, value):
+        total = self.player.get_duration()
+        if total > 0:
+            curr = float(value) * total
+            self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
+            if not self.is_user_scrubbing:
+                self.player.seek(curr)
 
     def _toggle_playback(self):
         if not self.current_converted_file:
@@ -922,19 +923,20 @@ class GeminiTTSApp(ctk.CTk):
         self.player.set_volume(float(value))
 
     def _setup_player_timer(self):
-        """Update playback slider and time display periodically."""
-        if self.player.is_playing() or self.player.is_paused():
-            curr = self.player.get_position()
-            total = self.player.get_duration()
-            if total > 0:
-                self.timeline_slider.set(curr / total)
-            self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
-            
-            if not self.player.is_playing() and not self.player.is_paused():
-                self.play_btn.configure(text="▶ Abspielen")
-                self.timeline_slider.set(0.0)
+        """Update playback slider and time display periodically when not user scrubbing."""
+        if not self.is_user_scrubbing:
+            if self.player.is_playing() or self.player.is_paused():
+                curr = self.player.get_position()
+                total = self.player.get_duration()
+                if total > 0:
+                    self.timeline_slider.set(curr / total)
+                self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
+                
+                if not self.player.is_playing() and not self.player.is_paused():
+                    self.play_btn.configure(text="▶ Abspielen")
+                    self.timeline_slider.set(0.0)
         
-        self.after(100, self._setup_player_timer)
+        self.after(80, self._setup_player_timer)
 
     def _format_time(self, seconds: float) -> str:
         mins = int(seconds // 60)

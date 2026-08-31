@@ -28,14 +28,14 @@ if not os.getenv("GEMINI_API_KEY") and (Path.cwd() / ".env").exists():
 
 # API Configuration
 DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEFAULT_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+DEFAULT_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview")
 
 # Available Gemini Models for TTS
 AVAILABLE_MODELS = [
-    {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash TTS (Empfohlen)"},
-    {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Neueste Version)"},
-    {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro TTS (Höchste Qualität)"},
-    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Standard)"},
+    {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Standard & Neueste Version)"},
+    {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash TTS"},
+    {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro TTS (Studio-Qualität)"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
 ]
 
 # Available Gemini Prebuilt Voices
