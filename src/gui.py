@@ -192,9 +192,9 @@ class GeminiTTSApp(ctk.CTk):
         theme_switch.select()
         theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
 
-        # ------------------ Main Scrollable Content Frame ------------------
-        main_content = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=0)
+        # ------------------ Main Content Frame (Scrollbar-Free) ------------------
+        main_content = ctk.CTkFrame(self, fg_color="transparent")
+        main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
         main_content.grid_columnconfigure(0, weight=1)
 
         # 1. TEXT INPUT & AUDIO-TAGS CARD
@@ -205,7 +205,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        text_card.pack(fill="x", pady=(0, 14))
+        text_card.pack(fill="x", pady=(0, 10))
 
         text_header_frame = ctk.CTkFrame(text_card, fg_color="transparent")
         text_header_frame.pack(fill="x", padx=18, pady=(14, 6))
@@ -294,7 +294,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        voice_card.pack(fill="x", pady=(0, 14))
+        voice_card.pack(fill="x", pady=(0, 10))
         voice_card.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Voice Selector
@@ -411,11 +411,11 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        self.format_card.pack(fill="x", pady=(0, 14))
+        self.format_card.pack(fill="x", pady=(0, 10))
 
         # Collapsible Header
         self.format_header_frame = ctk.CTkFrame(self.format_card, fg_color="transparent")
-        self.format_header_frame.pack(fill="x", padx=18, pady=12)
+        self.format_header_frame.pack(fill="x", padx=18, pady=10)
 
         self.format_title_lbl = ctk.CTkLabel(
             self.format_header_frame,
@@ -581,7 +581,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        action_card.pack(fill="x", pady=(0, 14))
+        action_card.pack(fill="x", pady=(0, 10))
 
         self.generate_btn = ctk.CTkButton(
             action_card,
@@ -594,7 +594,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color="#FFFFFF",
             text_color_disabled="#FFFFFF"
         )
-        self.generate_btn.pack(fill="x", padx=18, pady=(16, 8))
+        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
 
         # Progress Bar (Animates during generation)
         self.progress_bar = ctk.CTkProgressBar(
@@ -614,7 +614,7 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.status_lbl.pack(padx=18, pady=(0, 14))
+        self.status_lbl.pack(padx=18, pady=(0, 12))
 
         # 5. AUDIO PLAYER & EXPORT CARD
         player_card = ctk.CTkFrame(
@@ -624,7 +624,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=COLOR_CARD_BORDER
         )
-        player_card.pack(fill="x", pady=(0, 18))
+        player_card.pack(fill="x", pady=(0, 10))
         player_card.grid_columnconfigure(1, weight=1)
 
         player_header = ctk.CTkLabel(
