@@ -36,6 +36,7 @@ env/
 *.pem
 
 # Audio Cache & Output Files
+*.spec
 /output/
 /temp/
 *.wav
