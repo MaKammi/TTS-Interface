@@ -1758,7 +1758,7 @@ class GeminiTTSApp(ctk.CTk):
             return
 
         self.translate_single_btn.configure(state="disabled", text="⏳ Übersetze...")
-        self.status_lbl.configure(text=f"Übersetze Text nach {selected_lang_name} (Gemini 3.8 Flash)...", text_color="#38BDF8")
+        self.status_lbl.configure(text=f"Übersetze Text nach {selected_lang_name} (Gemini)...", text_color="#38BDF8")
 
         def run_trans():
             try:
@@ -1774,6 +1774,8 @@ class GeminiTTSApp(ctk.CTk):
         self.text_input.delete("0.0", "end")
         self.text_input.insert("0.0", translated_text)
         self._update_counters()
+        # Uncheck auto-translate so subsequent generation will not re-translate already translated text
+        self.auto_translate_var.set(False)
         self.status_lbl.configure(text=f"✅ Erfolgreich nach {target_lang_name} übersetzt!", text_color="#10B981")
         messagebox.showinfo("Übersetzung fertig", f"Der Text wurde erfolgreich nach {target_lang_name} übersetzt!\nAlle Regieanweisungen und Audio-Tags blieben erhalten.")
 
@@ -2265,13 +2267,46 @@ class GeminiTTSApp(ctk.CTk):
             self._open_api_key_dialog()
             return
 
+        # Safely capture GUI variables on the main thread
+        auto_translate = bool(self.auto_translate_var.get())
+        selected_lang_name = self.lang_var.get()
+        lang_id = "auto"
+        for l in SUPPORTED_LANGUAGES:
+            if l["name"] == selected_lang_name:
+                lang_id = l["id"]
+                break
+
+        # If user checked auto-translate, require selecting a concrete target language
+        if auto_translate and lang_id == "auto":
+            messagebox.showwarning(
+                "Zielsprache wählen",
+                "Du hast die automatische Übersetzung aktiviert, aber als Sprache '🌐 Automatisch erkennen' gewählt.\n\n"
+                "Bitte wähle unter '🌐 Sprache' eine konkrete Zielsprache aus (z. B. Englisch, Französisch, Spanisch etc.)."
+            )
+            return
+
+        voice_choice = self.voice_var.get().split(" ")[0]
+        selected_model_name = self.model_var.get()
+        model_id = "gemini-3.1-flash-tts-preview"
+        for m in AVAILABLE_MODELS:
+            if m["name"] == selected_model_name:
+                model_id = m["id"]
+                break
+
+        system_prompt = self._get_current_system_prompt()
+        settings = self._get_current_encoding_settings()
+
         self.is_generating = True
         self.generate_btn.configure(state="disabled", text="⏳ Generiere Audio mit Gemini...")
         self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
         self.progress_bar.set(0.05)
         self.status_lbl.configure(text="Initialisiere Sprachgenerierung...", text_color="#38BDF8")
         
-        thread = threading.Thread(target=self._run_generation, args=(text,), daemon=True)
+        thread = threading.Thread(
+            target=self._run_generation,
+            args=(text, auto_translate, lang_id, selected_lang_name, voice_choice, model_id, system_prompt, settings),
+            daemon=True
+        )
         thread.start()
 
     def _update_generation_progress(self, progress_val: float, message: str):
@@ -2281,33 +2316,40 @@ class GeminiTTSApp(ctk.CTk):
         self.progress_bar.set(progress_val)
         self.status_lbl.configure(text=message, text_color="#38BDF8")
 
-    def _run_generation(self, text: str):
+    def _sync_translated_text_to_ui(self, translated_text: str, target_lang_name: str):
+        """Updates the text_input field after automatic translation so the UI is synchronized with spoken audio."""
+        self.text_input.delete("0.0", "end")
+        self.text_input.insert("0.0", translated_text)
+        self._update_counters()
+        # Uncheck auto-translate so subsequent generations won't re-translate already translated text
+        self.auto_translate_var.set(False)
+        self.status_lbl.configure(
+            text=f"✅ Text automatisch nach {target_lang_name} übersetzt. Generiere Sprache...",
+            text_color="#10B981"
+        )
+
+    def _run_generation(
+        self,
+        text: str,
+        auto_translate: bool,
+        lang_id: str,
+        selected_lang_name: str,
+        voice_choice: str,
+        model_id: str,
+        system_prompt: Optional[str],
+        settings: Dict[str, Any]
+    ):
         try:
-            voice_choice = self.voice_var.get().split(" ")[0]
-            
-            selected_model_name = self.model_var.get()
-            model_id = "gemini-3.1-flash-tts-preview"
-            for m in AVAILABLE_MODELS:
-                if m["name"] == selected_model_name:
-                    model_id = m["id"]
-                    break
-
-            selected_lang_name = self.lang_var.get()
-            lang_id = "auto"
-            for l in SUPPORTED_LANGUAGES:
-                if l["name"] == selected_lang_name:
-                    lang_id = l["id"]
-                    break
-
             start_time = time.time()
 
-            # Automatic translation if checkbox checked and language is not auto or de
-            if self.auto_translate_var.get() and lang_id not in ("auto", "de"):
+            # Automatic translation if checkbox checked and a concrete target language is selected
+            if auto_translate and lang_id != "auto":
                 self._update_generation_progress(0.08, f"Übersetze Text automatisch nach {selected_lang_name}...")
-                text = self.translation_service.translate_text(text, target_lang_id=lang_id)
+                translated = self.translation_service.translate_text(text, target_lang_id=lang_id)
+                text = translated
+                # Immediately sync translated text back into the GUI Skriptfeld
+                self.after(0, self._sync_translated_text_to_ui, translated, selected_lang_name)
 
-            system_prompt = self._get_current_system_prompt()
-            
             # Generate speech with chunking & progress updates
             raw_wav_path = self.tts_service.generate_speech(
                 text=text,
@@ -2320,7 +2362,6 @@ class GeminiTTSApp(ctk.CTk):
             self.current_generated_wav = raw_wav_path
 
             self._update_generation_progress(0.95, "Konvertiere Audio in Zielformat...")
-            settings = self._get_current_encoding_settings()
             
             output_converted_path = OUTPUT_DIR / f"tts_output_{int(time.time())}{settings['extension']}"
             

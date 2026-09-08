@@ -65,7 +65,7 @@ AVAILABLE_MODELS = [
     {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Standard & Neueste Version)"},
     {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash TTS"},
     {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro TTS (Studio-Qualität)"},
-    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+    {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash (Schnell & Zuverlässig)"},
 ]
 
 # Available Gemini Prebuilt Voices (Alle verfügbaren Stimmen inkl. Erinome)
@@ -91,7 +91,7 @@ AVAILABLE_VOICES = [
 ]
 
 # Translation & Instruction Configuration
-TRANSLATION_MODEL = "gemini-3.8-flash"
+TRANSLATION_MODEL = "gemini-3.6-flash"
 
 # Style & Tone Suggestions for System-Prompt
 STYLE_SUGGESTIONS = [
