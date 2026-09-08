@@ -40,6 +40,100 @@ TAG_REPLACEMENTS = {
     r"\[räuspern\]": "[cough]",
 }
 
+# Known German-to-English tone mapping for instant conversion
+GERMAN_TONE_MAP = {
+    "ruhig": "calm",
+    "professionell": "professional",
+    "sachlich": "factual, objective",
+    "warm": "warm",
+    "freundlich": "friendly",
+    "vertrauenswürdig": "trustworthy",
+    "lebhaft": "lively",
+    "enthusiastisch": "enthusiastic",
+    "dynamisch": "dynamic",
+    "sanft": "gentle",
+    "einfühlsam": "empathetic",
+    "entspannend": "soothing, relaxing",
+    "dramatisch": "dramatic",
+    "tief": "deep",
+    "geheimnisvoll": "mysterious",
+    "dokumentation": "documentary style",
+    "erklärvideo": "explainer style",
+    "hörbuch": "audiobook storytelling style",
+    "meditation": "meditative tone",
+    "krimi": "suspenseful crime thriller style",
+    "hörspiel": "radio play dramatic style",
+    "klar": "clear",
+    "artikuliert": "articulate",
+    "kraftvoll": "powerful",
+    "selbstbewusst": "confident",
+    "melodisch": "melodic",
+    "harmonisch": "harmonious",
+    "heiter": "cheerful",
+    "fröhlich": "happy",
+    "traurig": "sad",
+    "ernst": "serious",
+    "langsam": "slow",
+    "schnell": "fast",
+}
+
+
+def convert_tone_to_english(tone: str, api_key: Optional[str] = None) -> str:
+    """
+    Converts a tone or acting directive into concise English voice descriptors.
+    Gemini TTS interprets [Tone: ...] directives. If directives are passed in German,
+    Gemini misinterprets the target language of the script as German and translates
+    or switches language during audio synthesis. Converting directives to English
+    ensures Gemini TTS retains the actual language of the script (English, Spanish, German, etc.).
+    """
+    cleaned = tone.replace("[", "").replace("]", "").strip()
+    if not cleaned:
+        return ""
+
+    english_keywords = {
+        "calm", "professional", "informative", "documentary", "style", "warm",
+        "friendly", "approachable", "trustworthy", "enthusiastic", "energetic",
+        "lively", "dynamic", "gentle", "soothing", "soft", "storytelling",
+        "tone", "dramatic", "deep", "mysterious", "suspenseful", "slow", "fast",
+        "objective", "factual", "happy", "sad", "serious"
+    }
+    cleaned_lower = cleaned.lower()
+    words = set(re.findall(r"\w+", cleaned_lower))
+    if words and len(words.intersection(english_keywords)) >= max(1, len(words) * 0.4):
+        return cleaned
+
+    # Check for direct matches in German tone map
+    matched_descriptors = []
+    for de_term, en_term in GERMAN_TONE_MAP.items():
+        if re.search(r"\b" + re.escape(de_term) + r"\b", cleaned_lower):
+            matched_descriptors.append(en_term)
+
+    if matched_descriptors:
+        return ", ".join(matched_descriptors)
+
+    # For free-form text, translate via Gemini API if key is available
+    if api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
+            prompt = (
+                "Convert the following voice acting / tone directive into a short English voice descriptor "
+                "(comma-separated list of max 6 tone adjectives/styles in English). "
+                "Output ONLY the English adjectives, nothing else.\n\n"
+                f"Directive: {cleaned}"
+            )
+            resp = requests.post(url, json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.0}
+            }, timeout=6)
+            if resp.status_code == 200:
+                res = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                if res:
+                    return res.replace("[", "").replace("]", "")
+        except Exception:
+            pass
+
+    return cleaned
+
 
 def preprocess_text_for_gemini(text: str) -> str:
     """Standardize inline audio tags into Gemini's recognized directives."""
@@ -220,10 +314,10 @@ class GeminiTTSService:
         all_pcm_frames = []
         fallback_model = "gemini-2.5-flash-preview-tts" if model != "gemini-2.5-flash-preview-tts" else "gemini-2.5-pro-preview-tts"
 
-        # Sanitize system_prompt / tone directive
+        # Sanitize system_prompt / tone directive and convert to English descriptors
         clean_tone = ""
         if system_prompt and system_prompt.strip():
-            clean_tone = system_prompt.replace("[", "").replace("]", "").strip()
+            clean_tone = convert_tone_to_english(system_prompt, current_key)
 
         for idx, chunk in enumerate(chunks):
             if progress_callback:
