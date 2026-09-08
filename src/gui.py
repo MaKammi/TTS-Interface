@@ -44,18 +44,48 @@ from .translation_service import TranslationService
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# Typography & Color Constants for ZQP Design System (www.zqp.de)
+# Typography & Color Constants for Google Material 3 Expressive System (ZQP Edition)
 FONT_FAMILY = "Segoe UI"
-COLOR_PRIMARY_TEXT = ("#23282D", "#E6F2F0")       # Dark Charcoal (Light) / Off-White (Dark)
-COLOR_MUTED_TEXT = ("#5B7C7B", "#8EABA7")         # Soft Muted Teal-Grey
-COLOR_ACCENT = ("#245C56", "#2F7A6D")             # ZQP Forest Teal / Petrol
-COLOR_ACCENT_HOVER = ("#1B5C53", "#3D998C")       # Darker Petrol (Light) / Glowing Teal (Dark)
-COLOR_CTA = "#F56E28"                              # ZQP Signal-Orange / Coral
-COLOR_CTA_HOVER = "#DC5D1D"
-COLOR_CARD_BG = ("#FFFFFF", "#172725")            # Pure White (Light) / Dark Slate Petrol (Dark)
-COLOR_CARD_BORDER = ("#D6E6E1", "#263D3A")        # Subtle Teal-Grey (Light) / Deep Petrol Border (Dark)
-COLOR_APP_BG = ("#F3F8F7", "#101A19")             # Soft Mint-Grey Window Background
-COLOR_SUBCARD_BG = ("#F8FAFA", "#121E1C")
+
+# High-contrast Text Constants (WCAG AAA compliant)
+COLOR_PRIMARY_TEXT = ("#191C1B", "#E0E8E6")       # Deep Charcoal (Light) / Off-White (Dark)
+COLOR_MUTED_TEXT = ("#3F4946", "#A2B2AE")         # Slate Teal Secondary Text
+
+# Material 3 Tonal Roles (derived from ZQP Brand DNA)
+M3_PRIMARY = ("#17534A", "#52DBCA")               # ZQP Forest Teal / Mint Teal
+M3_PRIMARY_HOVER = ("#10413A", "#38C2B0")
+M3_PRIMARY_CONTAINER = ("#C8ECE4", "#005048")     # Soft Tonal Teal
+M3_ON_PRIMARY_CONTAINER = ("#00201C", "#74F8E6")
+
+M3_SECONDARY = ("#48635E", "#AFC9C3")
+M3_SECONDARY_CONTAINER = ("#CCE8E2", "#1C302D")   # M3 Soft Sage Tonal
+M3_ON_SECONDARY_CONTAINER = ("#05201B", "#C0D8D2")
+
+M3_CTA = "#D45524"                                 # ZQP Terracotta / Warm Coral
+M3_CTA_HOVER = "#B84315"
+M3_CTA_CONTAINER = ("#FFDBCF", "#380D00")
+
+M3_SURFACE = ("#FFFFFF", "#152422")               # Card Surface
+M3_SURFACE_DIM = ("#F4F7F6", "#0E1715")           # App Window Background
+M3_SURFACE_CONTAINER = ("#EEF4F2", "#182826")     # Dropdown & Inset Field Background
+M3_SURFACE_CONTAINER_HIGH = ("#E7EFEF", "#203431")
+
+M3_OUTLINE = ("#BFC9C6", "#384C48")               # Outlined Button Borders
+M3_OUTLINE_VARIANT = ("#D9E3E0", "#243834")       # Subtle Card & Field Borders
+
+M3_ERROR = ("#BA1A1A", "#FFB4AB")
+M3_ERROR_CONTAINER = ("#FFDAD6", "#5C1D1D")
+M3_ERROR_HOVER = ("#FFEDEA", "#2D1010")
+
+# Aliases for compatibility
+COLOR_ACCENT = M3_PRIMARY
+COLOR_ACCENT_HOVER = M3_PRIMARY_HOVER
+COLOR_CTA = M3_CTA
+COLOR_CTA_HOVER = M3_CTA_HOVER
+COLOR_CARD_BG = M3_SURFACE
+COLOR_CARD_BORDER = M3_OUTLINE_VARIANT
+COLOR_APP_BG = M3_SURFACE_DIM
+COLOR_SUBCARD_BG = M3_SURFACE_CONTAINER
 
 
 class WaveformCanvas(ctk.CTkCanvas):
@@ -154,12 +184,12 @@ class WaveformCanvas(ctk.CTkCanvas):
             return
 
         is_dark = (ctk.get_appearance_mode() == "Dark")
-        bg_color = "#121E1C" if is_dark else "#F4F7F6"
+        bg_color = "#182826" if is_dark else "#EEF4F2"
         self.configure(bg=bg_color)
 
-        color_active = "#3D998C" if is_dark else "#245C56"
-        color_inactive = "#263D3A" if is_dark else "#D6E6E1"
-        color_playhead = "#F56E28"
+        color_active = "#52DBCA" if is_dark else "#17534A"
+        color_inactive = "#28403C" if is_dark else "#D0E0DC"
+        color_playhead = "#D45524"
 
         n = len(self.amplitudes)
         if n == 0:
@@ -189,6 +219,69 @@ class WaveformCanvas(ctk.CTkCanvas):
         self.create_line(playhead_x, 1, playhead_x, h - 1, fill=color_playhead, width=2.5)
 
 
+class MaterialSegmentedControl(ctk.CTkFrame):
+    """
+    Google Material 3 Expressive Segmented Control with stadium pill buttons
+    and guaranteed high contrast ratio in both selected and unselected states.
+    """
+
+    def __init__(self, parent, values: List[str], command=None, height: int = 46, **kwargs):
+        super().__init__(
+            parent,
+            height=height,
+            corner_radius=23,
+            fg_color=M3_SURFACE_CONTAINER,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT,
+            **kwargs
+        )
+        self.command = command
+        self.values = values
+        self.current_value = values[0]
+        self.buttons: List[tuple] = []
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(tuple(range(len(values))), weight=1)
+
+        for i, val in enumerate(values):
+            btn = ctk.CTkButton(
+                self,
+                text=val,
+                height=height - 8,
+                corner_radius=19,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+                command=lambda v=val: self.set(v)
+            )
+            btn.grid(row=0, column=i, padx=4, pady=4, sticky="nsew")
+            self.buttons.append((val, btn))
+
+        self._update_button_styles()
+
+    def set(self, value: str):
+        self.current_value = value
+        self._update_button_styles()
+        if self.command:
+            self.command(value)
+
+    def get(self) -> str:
+        return self.current_value
+
+    def _update_button_styles(self):
+        for val, btn in self.buttons:
+            if val == self.current_value:
+                btn.configure(
+                    fg_color=M3_PRIMARY,
+                    hover_color=M3_PRIMARY_HOVER,
+                    text_color=("#FFFFFF", "#00201C")
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    hover_color=("#E0ECE9", "#243834"),
+                    text_color=COLOR_PRIMARY_TEXT
+                )
+
+
 
 class APIKeyDialog(ctk.CTkToplevel):
     """Dialog for viewing and editing the Gemini API Key."""
@@ -200,51 +293,62 @@ class APIKeyDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.on_save_callback = on_save_callback
 
-        frame = ctk.CTkFrame(self, corner_radius=12, fg_color=COLOR_CARD_BG)
+        frame = ctk.CTkFrame(
+            self,
+            corner_radius=16,
+            fg_color=M3_SURFACE,
+            border_width=1.5,
+            border_color=M3_OUTLINE_VARIANT
+        )
         frame.pack(padx=20, pady=20, fill="both", expand=True)
 
         lbl = ctk.CTkLabel(
             frame,
             text="Google Gemini API-Key",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=17, weight="bold"),
-            text_color="#FFFFFF"
+            font=ctk.CTkFont(family=FONT_FAMILY, size=18, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
         )
-        lbl.pack(pady=(16, 6))
+        lbl.pack(pady=(18, 6))
 
         desc = ctk.CTkLabel(
             frame,
             text="Trage hier deinen API-Key aus Google AI Studio ein.\nDer Key wird sicher in deiner lokalen .env Datei gespeichert.",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color="#CBD5E1",
+            text_color=COLOR_MUTED_TEXT,
             justify="center"
         )
-        desc.pack(pady=(0, 12))
+        desc.pack(pady=(0, 14))
 
         self.key_entry = ctk.CTkEntry(
             frame,
             placeholder_text="AQ... oder AIzaSy...",
             show="*",
             width=440,
-            height=38,
+            height=40,
+            corner_radius=12,
+            border_width=1.5,
+            border_color=M3_OUTLINE_VARIANT,
+            fg_color=M3_SURFACE_CONTAINER,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            text_color="#FFFFFF"
+            text_color=COLOR_PRIMARY_TEXT
         )
         self.key_entry.pack(pady=6)
         self.key_entry.insert(0, get_api_key())
 
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=(16, 10))
+        btn_frame.pack(pady=(18, 12))
 
         save_btn = ctk.CTkButton(
             btn_frame,
             text="Speichern",
             command=self._save,
             width=130,
-            height=34,
+            height=36,
+            corner_radius=18,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            fg_color=COLOR_ACCENT,
-            hover_color=COLOR_ACCENT_HOVER,
-            text_color="#FFFFFF"
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=("#FFFFFF", "#00201C")
         )
         save_btn.pack(side="left", padx=8)
 
@@ -252,12 +356,15 @@ class APIKeyDialog(ctk.CTkToplevel):
             btn_frame,
             text="Abbrechen",
             command=self.destroy,
-            width=100,
-            height=34,
+            width=110,
+            height=36,
+            corner_radius=18,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            fg_color="#475569",
-            hover_color="#334155",
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=COLOR_MUTED_TEXT,
+            border_width=1.5,
+            border_color=M3_OUTLINE
         )
         cancel_btn.pack(side="left", padx=8)
 
@@ -334,7 +441,7 @@ class GeminiTTSApp(ctk.CTk):
         self.grid_rowconfigure(1, weight=1)
 
         # ------------------ Header Bar ------------------
-        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("#E3EEEC", "#121E1C"))
+        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=M3_SURFACE)
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
         header_frame.grid_columnconfigure(1, weight=1)
 
@@ -344,23 +451,23 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=21, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        title_label.grid(row=0, column=0, padx=22, pady=14, sticky="w")
+        title_label.grid(row=0, column=0, padx=24, pady=14, sticky="w")
 
-        # API-Key Badge & Settings Button
+        # API-Key Badge & Settings Button (M3 Tonal Pill)
         self.key_status_btn = ctk.CTkButton(
             header_frame,
             text=self._get_key_status_text(),
             command=self._open_api_key_dialog,
             width=180,
-            height=34,
+            height=36,
+            corner_radius=18,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#D6E6E1", "#1B2E2B"),
-            hover_color=("#BBD1CD", "#245C56"),
-            text_color=COLOR_PRIMARY_TEXT,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            fg_color=M3_PRIMARY_CONTAINER,
+            hover_color=("#B6E4DA", "#00645A"),
+            text_color=M3_ON_PRIMARY_CONTAINER,
+            border_width=0
         )
-        self.key_status_btn.grid(row=0, column=2, padx=(0, 12), pady=14, sticky="e")
+        self.key_status_btn.grid(row=0, column=2, padx=(0, 14), pady=14, sticky="e")
 
         self.theme_switch = ctk.CTkSwitch(
             header_frame,
@@ -370,10 +477,10 @@ class GeminiTTSApp(ctk.CTk):
             offvalue="Light",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT,
-            progress_color=COLOR_ACCENT[0]
+            progress_color=M3_PRIMARY[0]
         )
         # Default is Light mode (unselected)
-        self.theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
+        self.theme_switch.grid(row=0, column=3, padx=20, pady=14, sticky="e")
 
         # ------------------ Main Auto-Scrollable Content Frame ------------------
         main_content = AutoScrollableFrame(self, fg_color="transparent")
@@ -382,39 +489,32 @@ class GeminiTTSApp(ctk.CTk):
 
         # ------------------ 1. Mode Selector (Permanent Top) ------------------
         mode_frame = ctk.CTkFrame(main_content, fg_color="transparent")
-        mode_frame.pack(fill="x", pady=(0, 10))
+        mode_frame.pack(fill="x", pady=(0, 12))
 
-        self.mode_segmented = ctk.CTkSegmentedButton(
+        self.mode_segmented = MaterialSegmentedControl(
             mode_frame,
             values=["✍️ Einzeltext-Modus", "📂 Dokumenten- & Batch-Import"],
             command=self._on_mode_switched,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            selected_color=COLOR_ACCENT[0],
-            selected_hover_color=COLOR_ACCENT_HOVER[0],
-            unselected_color=("#D6E6E1", "#172725"),
-            unselected_hover_color=("#BBD1CD", "#263D3A"),
-            text_color=("#FFFFFF", "#FFFFFF"),
-            height=38
+            height=46
         )
-        self.mode_segmented.set("✍️ Einzeltext-Modus")
         self.mode_segmented.pack(fill="x")
 
         # ------------------ 2. Input Container (Permanent Slot) ------------------
         self.input_container = ctk.CTkFrame(main_content, fg_color="transparent")
         self.input_container.pack(fill="x", pady=(0, 0))
 
-        # 2A: Single-Text Card
+        # 2A: Single-Text Card (M3 Elevated Card)
         self.single_text_card = ctk.CTkFrame(
             self.input_container,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.single_text_card.pack(fill="x", pady=(0, 10))
+        self.single_text_card.pack(fill="x", pady=(0, 12))
 
         text_header_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        text_header_frame.pack(fill="x", padx=18, pady=(14, 6))
+        text_header_frame.pack(fill="x", padx=20, pady=(16, 8))
 
         text_title = ctk.CTkLabel(
             text_header_frame,
@@ -424,33 +524,34 @@ class GeminiTTSApp(ctk.CTk):
         )
         text_title.pack(side="left")
 
-        # Translation Button
+        # Translation Button (M3 Tonal Pill)
         self.translate_single_btn = ctk.CTkButton(
             text_header_frame,
             text="🌐 In Zielsprache übersetzen",
             command=self._translate_single_text,
-            height=30,
+            height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=COLOR_ACCENT[0],
-            hover_color=COLOR_ACCENT_HOVER[0],
-            text_color="#FFFFFF",
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            fg_color=M3_SECONDARY_CONTAINER,
+            hover_color=("#BDDFD8", "#24403C"),
+            text_color=M3_ON_SECONDARY_CONTAINER,
+            border_width=0
         )
         self.translate_single_btn.pack(side="right", padx=(8, 0))
 
-        # Quick Document Loader Button
+        # Quick Document Loader Button (M3 Outlined Pill)
         load_doc_btn = ctk.CTkButton(
             text_header_frame,
             text="📂 Dokument laden",
             command=self._load_document_to_single_text,
-            height=30,
+            height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#D6E6E1", "#1B2E2B"),
-            hover_color=("#BBD1CD", "#245C56"),
-            text_color=COLOR_PRIMARY_TEXT,
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE
         )
         load_doc_btn.pack(side="right", padx=(8, 0))
 
@@ -460,7 +561,7 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.char_counter_lbl.pack(side="right", padx=(0, 6))
+        self.char_counter_lbl.pack(side="right", padx=(0, 8))
 
         # Main text input area (Enlarged to 250px as dominant Hero field)
         self.text_input = ctk.CTkTextbox(
@@ -468,19 +569,20 @@ class GeminiTTSApp(ctk.CTk):
             height=250,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14),
             wrap="word",
+            corner_radius=16,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER,
-            fg_color=("#FFFFFF", "#111D1B"),
+            border_color=M3_OUTLINE_VARIANT,
+            fg_color=("#FFFFFF", "#0E1A18"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        self.text_input.pack(fill="x", padx=18, pady=(0, 6))
+        self.text_input.pack(fill="x", padx=20, pady=(0, 8))
         self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
         # Translation check row
         trans_options_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        trans_options_frame.pack(fill="x", padx=18, pady=(0, 8))
+        trans_options_frame.pack(fill="x", padx=20, pady=(0, 10))
 
         self.auto_translate_var = ctk.BooleanVar(value=False)
         self.auto_translate_check = ctk.CTkCheckBox(
@@ -489,14 +591,14 @@ class GeminiTTSApp(ctk.CTk):
             variable=self.auto_translate_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT,
-            fg_color=COLOR_ACCENT[0],
-            hover_color=COLOR_ACCENT_HOVER[0]
+            fg_color=M3_PRIMARY[0],
+            hover_color=M3_PRIMARY_HOVER[0]
         )
         self.auto_translate_check.pack(side="left")
 
         # Audio-Tags Toolbar (Collapsible by default as requested)
         self.tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        self.tag_section_frame.pack(fill="x", padx=18, pady=(0, 10))
+        self.tag_section_frame.pack(fill="x", padx=20, pady=(0, 14))
 
         tag_header_row = ctk.CTkFrame(self.tag_section_frame, fg_color="transparent")
         tag_header_row.pack(fill="x", pady=(0, 4))
@@ -505,7 +607,7 @@ class GeminiTTSApp(ctk.CTk):
             tag_header_row,
             text="🎭 Audio-Tags einfügen (z. B. [lachen], [flüstern], [Pause]):",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_ACCENT[0]
+            text_color=M3_PRIMARY
         )
         tag_title_lbl.pack(side="left")
 
@@ -513,14 +615,15 @@ class GeminiTTSApp(ctk.CTk):
             tag_header_row,
             text="▾ Audio-Tags anzeigen",
             command=self._toggle_tags_panel,
-            height=28,
-            width=160,
+            height=32,
+            width=170,
+            corner_radius=16,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color=("#D6E6E1", "#1B2E2B"),
-            hover_color=("#BBD1CD", "#245C56"),
-            text_color=COLOR_PRIMARY_TEXT,
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE
         )
         self.tag_toggle_btn.pack(side="right")
 
@@ -548,28 +651,28 @@ class GeminiTTSApp(ctk.CTk):
                 self.tag_buttons_frame,
                 text=label_text,
                 command=lambda t=tag_code: self._insert_tag(t),
-                height=32,
+                height=34,
+                corner_radius=12,
                 font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-                fg_color=("#F3F8F7", "#172725"),
-                hover_color=("#E3EEEC", "#245C56"),
+                fg_color=M3_SURFACE_CONTAINER,
+                hover_color=M3_PRIMARY_CONTAINER,
                 text_color=COLOR_PRIMARY_TEXT,
-                corner_radius=8,
-                border_width=1.5,
-                border_color=COLOR_CARD_BORDER
+                border_width=1,
+                border_color=M3_OUTLINE_VARIANT
             )
             btn.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="ew")
 
         # 2B: Batch Card (Instantiated, packed only in batch mode)
         self.batch_card = ctk.CTkFrame(
             self.input_container,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
 
         batch_header = ctk.CTkFrame(self.batch_card, fg_color="transparent")
-        batch_header.pack(fill="x", padx=18, pady=(14, 8))
+        batch_header.pack(fill="x", padx=20, pady=(16, 8))
 
         ctk.CTkLabel(
             batch_header,
@@ -580,17 +683,19 @@ class GeminiTTSApp(ctk.CTk):
 
         # Toolbar
         toolbar_frame = ctk.CTkFrame(self.batch_card, fg_color="transparent")
-        toolbar_frame.pack(fill="x", padx=18, pady=(0, 10))
+        toolbar_frame.pack(fill="x", padx=20, pady=(0, 12))
 
         add_files_btn = ctk.CTkButton(
             toolbar_frame,
             text="➕ Dateien hinzufügen...",
             command=self._batch_add_files_dialog,
             height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=COLOR_ACCENT,
-            hover_color=COLOR_ACCENT_HOVER,
-            text_color="#FFFFFF"
+            fg_color=M3_PRIMARY_CONTAINER,
+            hover_color=("#B6E4DA", "#00645A"),
+            text_color=M3_ON_PRIMARY_CONTAINER,
+            border_width=0
         )
         add_files_btn.pack(side="left", padx=(0, 8))
 
@@ -599,10 +704,13 @@ class GeminiTTSApp(ctk.CTk):
             text="📁 Ordner importieren...",
             command=self._batch_add_folder_dialog,
             height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
+            border_width=1.5,
+            border_color=M3_OUTLINE
         )
         add_folder_btn.pack(side="left", padx=(0, 8))
 
@@ -611,22 +719,25 @@ class GeminiTTSApp(ctk.CTk):
             text="🗑️ Liste leeren",
             command=self._batch_clear_queue,
             height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color="#475569",
-            hover_color="#334155",
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_ERROR_HOVER,
+            text_color=M3_ERROR,
+            border_width=1.5,
+            border_color=M3_ERROR_CONTAINER
         )
         clear_btn.pack(side="left")
 
         # Options Row (Chapter Splitting, Multilingual Export & Output Directory)
         options_frame = ctk.CTkFrame(
             self.batch_card,
-            fg_color=("gray95", "#0F172A"),
-            corner_radius=8,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            fg_color=M3_SURFACE_CONTAINER,
+            corner_radius=14,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
         )
-        options_frame.pack(fill="x", padx=18, pady=(0, 10))
+        options_frame.pack(fill="x", padx=20, pady=(0, 12))
 
         self.batch_split_var = ctk.BooleanVar(value=True)
         split_check = ctk.CTkCheckBox(
@@ -634,13 +745,15 @@ class GeminiTTSApp(ctk.CTk):
             text="Lange Dokumente automatisch in Kapitel aufteilen (# Überschriften)",
             variable=self.batch_split_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
+            text_color=COLOR_PRIMARY_TEXT,
+            fg_color=M3_PRIMARY[0],
+            hover_color=M3_PRIMARY_HOVER[0]
         )
-        split_check.pack(anchor="w", padx=12, pady=(10, 6))
+        split_check.pack(anchor="w", padx=14, pady=(12, 8))
 
         # Multi-Language Selection Row for Batch
         multi_lang_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        multi_lang_row.pack(fill="x", padx=12, pady=(0, 8))
+        multi_lang_row.pack(fill="x", padx=14, pady=(0, 10))
 
         ctk.CTkLabel(
             multi_lang_row,
@@ -659,12 +772,14 @@ class GeminiTTSApp(ctk.CTk):
                 variable=var,
                 width=65,
                 font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-                text_color=COLOR_PRIMARY_TEXT
+                text_color=COLOR_PRIMARY_TEXT,
+                fg_color=M3_PRIMARY[0],
+                hover_color=M3_PRIMARY_HOVER[0]
             )
             cb.pack(side="left", padx=4)
 
         outdir_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        outdir_row.pack(fill="x", padx=12, pady=(0, 10))
+        outdir_row.pack(fill="x", padx=14, pady=(0, 12))
 
         ctk.CTkLabel(
             outdir_row,
@@ -677,7 +792,7 @@ class GeminiTTSApp(ctk.CTk):
             outdir_row,
             text=str(self.batch_output_dir),
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color=("#1D4ED8", "#38BDF8")
+            text_color=M3_PRIMARY
         )
         self.batch_outdir_lbl.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
@@ -685,12 +800,15 @@ class GeminiTTSApp(ctk.CTk):
             outdir_row,
             text="Ändern...",
             command=self._batch_choose_outdir,
-            width=80,
-            height=28,
+            width=90,
+            height=30,
+            corner_radius=15,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color=("#334155", "#1E293B"),
-            hover_color=("#1E293B", "#334155"),
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
+            border_width=1.5,
+            border_color=M3_OUTLINE
         )
         change_outdir_btn.pack(side="right", padx=(0, 6))
 
@@ -698,12 +816,14 @@ class GeminiTTSApp(ctk.CTk):
             outdir_row,
             text="📂 Ordner öffnen",
             command=self._batch_open_outdir,
-            width=110,
-            height=28,
+            width=120,
+            height=30,
+            corner_radius=15,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color=("#334155", "#1E293B"),
-            hover_color=("#1E293B", "#334155"),
-            text_color="#FFFFFF"
+            fg_color=M3_SECONDARY_CONTAINER,
+            hover_color=("#BDDFD8", "#24403C"),
+            text_color=M3_ON_SECONDARY_CONTAINER,
+            border_width=0
         )
         open_outdir_btn.pack(side="right", padx=(0, 6))
 
@@ -711,12 +831,12 @@ class GeminiTTSApp(ctk.CTk):
         self.queue_frame = ctk.CTkScrollableFrame(
             self.batch_card,
             height=160,
-            fg_color=("gray90", "#0F172A"),
-            corner_radius=8,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            fg_color=M3_SURFACE_CONTAINER,
+            corner_radius=14,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.queue_frame.pack(fill="x", padx=18, pady=(0, 10))
+        self.queue_frame.pack(fill="x", padx=20, pady=(0, 14))
 
         self.queue_empty_lbl = ctk.CTkLabel(
             self.queue_frame,
@@ -730,16 +850,16 @@ class GeminiTTSApp(ctk.CTk):
         # Positioned right below the input container so it is immediately adjacent to the text!
         self.style_card = ctk.CTkFrame(
             main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.style_card.pack(fill="x", pady=(0, 10))
+        self.style_card.pack(fill="x", pady=(0, 12))
 
         # Header Row
         self.style_header_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
-        self.style_header_frame.pack(fill="x", padx=18, pady=(12, 6))
+        self.style_header_frame.pack(fill="x", padx=20, pady=(16, 8))
 
         self.style_title_lbl = ctk.CTkLabel(
             self.style_header_frame,
@@ -753,20 +873,21 @@ class GeminiTTSApp(ctk.CTk):
             self.style_header_frame,
             text="▴ Zuklappen",
             command=self._toggle_style_panel,
-            width=120,
-            height=28,
+            width=130,
+            height=32,
+            corner_radius=16,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color=("#334155", "#0F172A"),
-            hover_color=("#1E293B", "#1E3A8A"),
-            text_color="#FFFFFF",
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
             border_width=1.5,
-            border_color=("#64748B", "#38BDF8")
+            border_color=M3_OUTLINE
         )
         self.style_toggle_btn.pack(side="right")
 
         # Body Container (Open by default)
         self.style_body_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
-        self.style_body_frame.pack(fill="x", padx=18, pady=(0, 12))
+        self.style_body_frame.pack(fill="x", padx=20, pady=(0, 14))
 
         # Presets Toolbar Row
         preset_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
@@ -785,13 +906,17 @@ class GeminiTTSApp(ctk.CTk):
             values=[p[0] for p in STYLE_SUGGESTIONS],
             variable=self.style_preset_var,
             command=self._on_style_preset_changed,
-            height=32,
+            height=34,
+            corner_radius=12,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
         self.style_preset_menu.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
@@ -799,11 +924,13 @@ class GeminiTTSApp(ctk.CTk):
             preset_style_row,
             text="💾 Als Vorlage speichern...",
             command=self._save_current_style_preset,
-            height=32,
+            height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#059669", "#047857"),
-            hover_color=("#047857", "#059669"),
-            text_color="#FFFFFF"
+            fg_color=M3_PRIMARY_CONTAINER,
+            hover_color=("#B6E4DA", "#00645A"),
+            text_color=M3_ON_PRIMARY_CONTAINER,
+            border_width=0
         )
         save_style_btn.pack(side="left", padx=(0, 6))
 
@@ -811,11 +938,14 @@ class GeminiTTSApp(ctk.CTk):
             preset_style_row,
             text="🗑️ Vorlage löschen",
             command=self._delete_current_style_preset,
-            height=32,
+            height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color="#475569",
-            hover_color="#DC2626",
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_ERROR_HOVER,
+            text_color=M3_ERROR,
+            border_width=1.5,
+            border_color=M3_ERROR_CONTAINER
         )
         delete_style_btn.pack(side="left", padx=(0, 6))
 
@@ -823,23 +953,28 @@ class GeminiTTSApp(ctk.CTk):
             preset_style_row,
             text="Leeren",
             command=self._clear_style,
-            width=70,
-            height=32,
+            width=80,
+            height=34,
+            corner_radius=17,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color="#334155",
-            hover_color="#1E293B",
-            text_color="#FFFFFF"
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=COLOR_MUTED_TEXT,
+            border_width=1.5,
+            border_color=M3_OUTLINE
         )
         clear_style_btn.pack(side="left")
 
         # Multi-line Textarea for Regieanweisung
         self.style_input = ctk.CTkTextbox(
             self.style_body_frame,
-            height=65,
+            height=68,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             wrap="word",
+            corner_radius=14,
             border_width=1.5,
-            border_color=("#94A3B8", "#475569"),
+            border_color=M3_OUTLINE_VARIANT,
+            fg_color=("#FFFFFF", "#0E1A18"),
             text_color=COLOR_PRIMARY_TEXT
         )
         self.style_input.pack(fill="x", pady=(0, 6))
@@ -860,24 +995,24 @@ class GeminiTTSApp(ctk.CTk):
         # ------------------ 4. Permanent Voice, Language & Model Card ------------------
         voice_card = ctk.CTkFrame(
             main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        voice_card.pack(fill="x", pady=(0, 10))
+        voice_card.pack(fill="x", pady=(0, 12))
         voice_card.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Voice Selector
         voice_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        voice_box.grid(row=0, column=0, padx=16, pady=14, sticky="nsew")
+        voice_box.grid(row=0, column=0, padx=18, pady=16, sticky="nsew")
         
         ctk.CTkLabel(
             voice_box,
             text="🗣️ Stimme",
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 6))
 
         voice_options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in AVAILABLE_VOICES]
         self.voice_var = ctk.StringVar(value=voice_options[0])
@@ -886,13 +1021,17 @@ class GeminiTTSApp(ctk.CTk):
             values=voice_options,
             variable=self.voice_var,
             command=self._on_voice_changed,
-            height=36,
+            height=38,
+            corner_radius=12,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
         self.voice_menu.pack(fill="x")
 
@@ -904,18 +1043,18 @@ class GeminiTTSApp(ctk.CTk):
             wraplength=270,
             justify="left"
         )
-        self.voice_desc_lbl.pack(anchor="w", pady=(5, 0))
+        self.voice_desc_lbl.pack(anchor="w", pady=(6, 0))
 
         # Language Selector (32 Languages)
         lang_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        lang_box.grid(row=0, column=1, padx=16, pady=14, sticky="nsew")
+        lang_box.grid(row=0, column=1, padx=18, pady=16, sticky="nsew")
 
         ctk.CTkLabel(
             lang_box,
             text="🌐 Sprache",
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 6))
 
         lang_options = [l["name"] for l in SUPPORTED_LANGUAGES]
         self.lang_var = ctk.StringVar(value=lang_options[0])
@@ -923,13 +1062,17 @@ class GeminiTTSApp(ctk.CTk):
             lang_box,
             values=lang_options,
             variable=self.lang_var,
-            height=36,
+            height=38,
+            corner_radius=12,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
         self.lang_menu.pack(fill="x")
 
@@ -938,18 +1081,18 @@ class GeminiTTSApp(ctk.CTk):
             text="32 Sprachen unterstützt (Auto-Detect oder Zielsprache).",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
-        ).pack(anchor="w", pady=(5, 0))
+        ).pack(anchor="w", pady=(6, 0))
 
         # Model Selector (Defaults to Gemini 3.1 Flash TTS)
         model_box = ctk.CTkFrame(voice_card, fg_color="transparent")
-        model_box.grid(row=0, column=2, padx=16, pady=14, sticky="nsew")
+        model_box.grid(row=0, column=2, padx=18, pady=16, sticky="nsew")
 
         ctk.CTkLabel(
             model_box,
             text="🤖 Gemini TTS Modell",
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 6))
 
         model_options = [m["name"] for m in AVAILABLE_MODELS]
         self.model_var = ctk.StringVar(value=model_options[0])
@@ -957,13 +1100,17 @@ class GeminiTTSApp(ctk.CTk):
             model_box,
             values=model_options,
             variable=self.model_var,
-            height=36,
+            height=38,
+            corner_radius=12,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
         self.model_menu.pack(fill="x")
 
@@ -972,21 +1119,21 @@ class GeminiTTSApp(ctk.CTk):
             text="Standard: Gemini 3.1 Flash TTS Engine.",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
-        ).pack(anchor="w", pady=(5, 0))
+        ).pack(anchor="w", pady=(6, 0))
 
         # ------------------ 5. Permanent Collapsible Audio Format Card ------------------
         self.format_card = ctk.CTkFrame(
             main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.format_card.pack(fill="x", pady=(0, 10))
+        self.format_card.pack(fill="x", pady=(0, 12))
 
         # Collapsible Header
         self.format_header_frame = ctk.CTkFrame(self.format_card, fg_color="transparent")
-        self.format_header_frame.pack(fill="x", padx=18, pady=10)
+        self.format_header_frame.pack(fill="x", padx=20, pady=12)
 
         self.format_title_lbl = ctk.CTkLabel(
             self.format_header_frame,
@@ -1002,12 +1149,13 @@ class GeminiTTSApp(ctk.CTk):
             command=self._toggle_format_panel,
             width=190,
             height=32,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#334155", "#0F172A"),
-            hover_color=("#1E293B", "#1E3A8A"),
-            text_color="#FFFFFF",
+            corner_radius=16,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
             border_width=1.5,
-            border_color=("#64748B", "#38BDF8")
+            border_color=M3_OUTLINE
         )
         self.format_toggle_btn.pack(side="right")
 
@@ -1016,7 +1164,7 @@ class GeminiTTSApp(ctk.CTk):
 
         # Preset Selector Row
         preset_frame = ctk.CTkFrame(self.format_body_frame, fg_color="transparent")
-        preset_frame.pack(fill="x", padx=18, pady=(0, 10))
+        preset_frame.pack(fill="x", padx=20, pady=(0, 10))
 
         ctk.CTkLabel(
             preset_frame,
@@ -1032,25 +1180,29 @@ class GeminiTTSApp(ctk.CTk):
             values=preset_names,
             variable=self.preset_var,
             command=self._on_preset_changed,
-            height=36,
+            height=34,
+            corner_radius=12,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
         self.preset_menu.pack(side="left", fill="x", expand=True)
 
         # Settings panel
         self.custom_settings_frame = ctk.CTkFrame(
             self.format_body_frame,
-            fg_color=("gray95", "#0F172A"),
-            corner_radius=8,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            fg_color=M3_SURFACE_CONTAINER,
+            corner_radius=14,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.custom_settings_frame.pack(fill="x", padx=18, pady=(0, 14))
+        self.custom_settings_frame.pack(fill="x", padx=20, pady=(0, 14))
         self.custom_settings_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         # Codec
@@ -1059,7 +1211,7 @@ class GeminiTTSApp(ctk.CTk):
             text="Codec:",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+        ).grid(row=0, column=0, padx=8, pady=(8, 2), sticky="w")
         
         self.codec_var = ctk.StringVar(value="aac")
         self.codec_menu = ctk.CTkOptionMenu(
@@ -1067,11 +1219,18 @@ class GeminiTTSApp(ctk.CTk):
             values=["aac", "libmp3lame", "pcm_s16le"],
             variable=self.codec_var,
             height=30,
+            corner_radius=10,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
-        self.codec_menu.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="ew")
+        self.codec_menu.grid(row=1, column=0, padx=8, pady=(0, 10), sticky="ew")
 
         # Channels
         ctk.CTkLabel(
@@ -1079,7 +1238,7 @@ class GeminiTTSApp(ctk.CTk):
             text="Kanäle:",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).grid(row=0, column=1, padx=8, pady=(6, 2), sticky="w")
+        ).grid(row=0, column=1, padx=8, pady=(8, 2), sticky="w")
         
         self.channels_var = ctk.StringVar(value="Mono (1)")
         self.channels_menu = ctk.CTkOptionMenu(
@@ -1087,11 +1246,18 @@ class GeminiTTSApp(ctk.CTk):
             values=["Mono (1)", "Stereo (2)"],
             variable=self.channels_var,
             height=30,
+            corner_radius=10,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
-        self.channels_menu.grid(row=1, column=1, padx=8, pady=(0, 8), sticky="ew")
+        self.channels_menu.grid(row=1, column=1, padx=8, pady=(0, 10), sticky="ew")
 
         # Sample Rate
         ctk.CTkLabel(
@@ -1099,7 +1265,7 @@ class GeminiTTSApp(ctk.CTk):
             text="Abtastrate:",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).grid(row=0, column=2, padx=8, pady=(6, 2), sticky="w")
+        ).grid(row=0, column=2, padx=8, pady=(8, 2), sticky="w")
         
         self.rate_var = ctk.StringVar(value="44.100 Hz")
         self.rate_menu = ctk.CTkOptionMenu(
@@ -1107,11 +1273,18 @@ class GeminiTTSApp(ctk.CTk):
             values=["44.100 Hz", "48.000 Hz", "24.000 Hz"],
             variable=self.rate_var,
             height=30,
+            corner_radius=10,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
-        self.rate_menu.grid(row=1, column=2, padx=8, pady=(0, 8), sticky="ew")
+        self.rate_menu.grid(row=1, column=2, padx=8, pady=(0, 10), sticky="ew")
 
         # Bitrate
         ctk.CTkLabel(
@@ -1119,7 +1292,7 @@ class GeminiTTSApp(ctk.CTk):
             text="Datenrate:",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).grid(row=0, column=3, padx=8, pady=(6, 2), sticky="w")
+        ).grid(row=0, column=3, padx=8, pady=(8, 2), sticky="w")
         
         self.bitrate_var = ctk.StringVar(value="64 kbit/s")
         self.bitrate_menu = ctk.CTkOptionMenu(
@@ -1127,11 +1300,18 @@ class GeminiTTSApp(ctk.CTk):
             values=["64 kbit/s", "96 kbit/s", "128 kbit/s", "192 kbit/s", "320 kbit/s"],
             variable=self.bitrate_var,
             height=30,
+            corner_radius=10,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color="#FFFFFF"
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
         )
-        self.bitrate_menu.grid(row=1, column=3, padx=8, pady=(0, 8), sticky="ew")
+        self.bitrate_menu.grid(row=1, column=3, padx=8, pady=(0, 10), sticky="ew")
 
         # FastStart Checkbox
         self.faststart_var = ctk.BooleanVar(value=True)
@@ -1140,9 +1320,11 @@ class GeminiTTSApp(ctk.CTk):
             text="+faststart (Web-Streaming)",
             variable=self.faststart_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
+            text_color=COLOR_PRIMARY_TEXT,
+            fg_color=M3_PRIMARY[0],
+            hover_color=M3_PRIMARY_HOVER[0]
         )
-        self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
+        self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 10), sticky="w")
 
         # ------------------ 6. Action Container (Permanent Slot) ------------------
         self.action_container = ctk.CTkFrame(main_content, fg_color="transparent")
@@ -1151,34 +1333,35 @@ class GeminiTTSApp(ctk.CTk):
         # 6A: Single-Text Action Card
         self.single_action_card = ctk.CTkFrame(
             self.action_container,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        self.single_action_card.pack(fill="x", pady=(0, 10))
+        self.single_action_card.pack(fill="x", pady=(0, 12))
 
         self.generate_btn = ctk.CTkButton(
             self.single_action_card,
             text="⚡ Sprache generieren & konvertieren",
             command=self._start_generation_thread,
-            height=50,
+            height=54,
+            corner_radius=20,
             font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
-            fg_color=COLOR_CTA,
-            hover_color=COLOR_CTA_HOVER,
+            fg_color=M3_CTA,
+            hover_color=M3_CTA_HOVER,
             text_color="#FFFFFF",
             text_color_disabled="#FFFFFF"
         )
-        self.generate_btn.pack(fill="x", padx=18, pady=(14, 8))
+        self.generate_btn.pack(fill="x", padx=20, pady=(16, 10))
 
         self.progress_bar = ctk.CTkProgressBar(
             self.single_action_card,
             height=10,
             corner_radius=5,
-            progress_color=COLOR_ACCENT[0],
-            fg_color=("#D6E6E1", "#172725")
+            progress_color=M3_PRIMARY[0],
+            fg_color=M3_SURFACE_CONTAINER
         )
-        self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 10))
         self.progress_bar.set(0.0)
         self.progress_bar.pack_forget()
 
@@ -1188,42 +1371,46 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.status_lbl.pack(padx=18, pady=(0, 12))
+        self.status_lbl.pack(padx=20, pady=(0, 14))
 
         # 6B: Batch Action Card (Instantiated, packed only in batch mode)
         self.batch_action_card = ctk.CTkFrame(
             self.action_container,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
 
         batch_action_btn_row = ctk.CTkFrame(self.batch_action_card, fg_color="transparent")
-        batch_action_btn_row.pack(fill="x", padx=18, pady=(14, 8))
+        batch_action_btn_row.pack(fill="x", padx=20, pady=(16, 10))
 
         self.batch_start_btn = ctk.CTkButton(
             batch_action_btn_row,
             text="⚡ Alle Dateien in Warteschlange generieren",
             command=self._batch_start_processing,
-            height=46,
+            height=50,
+            corner_radius=20,
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
-            fg_color=COLOR_CTA,
-            hover_color=COLOR_CTA_HOVER,
+            fg_color=M3_CTA,
+            hover_color=M3_CTA_HOVER,
             text_color="#FFFFFF"
         )
-        self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         self.batch_cancel_btn = ctk.CTkButton(
             batch_action_btn_row,
             text="⏹ Abbrechen",
             command=self._batch_cancel,
-            height=46,
-            width=110,
+            height=50,
+            width=120,
+            corner_radius=20,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-            fg_color="#DC2626",
-            hover_color="#B91C1C",
-            text_color="#FFFFFF",
+            fg_color="transparent",
+            hover_color=M3_ERROR_HOVER,
+            text_color=M3_ERROR,
+            border_width=1.5,
+            border_color=M3_ERROR_CONTAINER,
             state="disabled"
         )
         self.batch_cancel_btn.pack(side="right")
@@ -1232,10 +1419,10 @@ class GeminiTTSApp(ctk.CTk):
             self.batch_action_card,
             height=10,
             corner_radius=5,
-            progress_color=COLOR_ACCENT[0],
-            fg_color=("#D6E6E1", "#172725")
+            progress_color=M3_PRIMARY[0],
+            fg_color=M3_SURFACE_CONTAINER
         )
-        self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
+        self.batch_progress_bar.pack(fill="x", padx=20, pady=(0, 10))
         self.batch_progress_bar.set(0.0)
         self.batch_progress_bar.pack_forget()
 
@@ -1245,17 +1432,17 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.batch_status_lbl.pack(padx=18, pady=(0, 12))
+        self.batch_status_lbl.pack(padx=20, pady=(0, 14))
 
         # ------------------ 7. Permanent Audio Player & Export Card (Bottom) ------------------
         player_card = ctk.CTkFrame(
             main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
+            corner_radius=20,
+            fg_color=M3_SURFACE,
             border_width=1.5,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        player_card.pack(fill="x", pady=(0, 10))
+        player_card.pack(fill="x", pady=(0, 12))
         player_card.grid_columnconfigure(1, weight=1)
 
         player_header = ctk.CTkLabel(
@@ -1264,58 +1451,62 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=18, pady=(14, 8))
+        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=20, pady=(16, 10))
 
         # Row 1: Visual Audio Waveform Canvas Display
         waveform_container = ctk.CTkFrame(
             player_card,
-            fg_color=COLOR_SUBCARD_BG,
-            corner_radius=8,
+            fg_color=M3_SURFACE_CONTAINER,
+            corner_radius=16,
             border_width=1,
-            border_color=COLOR_CARD_BORDER
+            border_color=M3_OUTLINE_VARIANT
         )
-        waveform_container.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 10))
+        waveform_container.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 12))
         waveform_container.grid_columnconfigure(0, weight=1)
 
         self.waveform_view = WaveformCanvas(
             waveform_container,
             on_seek_callback=self._on_waveform_seek,
-            height=54
+            height=56
         )
-        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=6, pady=6)
 
         # Row 2: Controls row
         controls_frame = ctk.CTkFrame(player_card, fg_color="transparent")
-        controls_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=0)
+        controls_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=20, pady=0)
         controls_frame.grid_columnconfigure(2, weight=1)
 
         self.play_btn = ctk.CTkButton(
             controls_frame,
             text="▶ Abspielen",
             command=self._toggle_playback,
-            width=120,
-            height=38,
+            width=130,
+            height=42,
+            corner_radius=21,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             state="disabled",
-            fg_color=COLOR_ACCENT[0],
-            hover_color=COLOR_ACCENT_HOVER[0],
-            text_color="#FFFFFF",
-            text_color_disabled="#CBD5E1"
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=("#FFFFFF", "#00201C"),
+            text_color_disabled=COLOR_MUTED_TEXT
         )
-        self.play_btn.grid(row=0, column=0, padx=(0, 8))
+        self.play_btn.grid(row=0, column=0, padx=(0, 10))
 
         self.stop_btn = ctk.CTkButton(
             controls_frame,
             text="■ Stopp",
             command=self._stop_playback,
-            width=90,
-            height=38,
+            width=100,
+            height=42,
+            corner_radius=21,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             state="disabled",
-            fg_color="#DC2626",
-            hover_color="#B91C1C",
-            text_color="#FFFFFF",
-            text_color_disabled="#CBD5E1"
+            fg_color="transparent",
+            hover_color=M3_ERROR_HOVER,
+            text_color=M3_ERROR,
+            text_color_disabled=COLOR_MUTED_TEXT,
+            border_width=1.5,
+            border_color=M3_ERROR_CONTAINER
         )
         self.stop_btn.grid(row=0, column=1, padx=(0, 14))
 
@@ -1327,9 +1518,9 @@ class GeminiTTSApp(ctk.CTk):
             number_of_steps=200,
             state="disabled",
             command=self._on_seek_change,
-            button_color=COLOR_CTA,
-            button_hover_color=COLOR_CTA_HOVER,
-            progress_color=COLOR_ACCENT[0]
+            button_color=M3_CTA,
+            button_hover_color=M3_CTA_HOVER,
+            progress_color=M3_PRIMARY[0]
         )
         self.timeline_slider.set(0.0)
         self.timeline_slider.grid(row=0, column=2, sticky="ew", padx=10)
@@ -1360,27 +1551,29 @@ class GeminiTTSApp(ctk.CTk):
             to=1.0,
             width=100,
             command=self._on_volume_changed,
-            button_color=COLOR_ACCENT[0],
-            button_hover_color=COLOR_ACCENT_HOVER[0],
-            progress_color=COLOR_ACCENT[0]
+            button_color=M3_PRIMARY[0],
+            button_hover_color=M3_PRIMARY_HOVER[0],
+            progress_color=M3_PRIMARY[0]
         )
         self.volume_slider.set(0.8)
         self.volume_slider.grid(row=0, column=5, padx=(0, 0))
 
-        # Row 3: Export Button
+        # Row 3: Export Button (M3 Tonal Stadium)
         self.export_btn = ctk.CTkButton(
             player_card,
             text="💾 Audiodatei speichern unter...",
             command=self._export_audio,
-            height=42,
+            height=44,
+            corner_radius=22,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-            fg_color=COLOR_ACCENT[0],
-            hover_color=COLOR_ACCENT_HOVER[0],
-            text_color="#FFFFFF",
-            text_color_disabled="#CBD5E1",
+            fg_color=M3_SECONDARY_CONTAINER,
+            hover_color=("#BDDFD8", "#24403C"),
+            text_color=M3_ON_SECONDARY_CONTAINER,
+            text_color_disabled=COLOR_MUTED_TEXT,
+            border_width=0,
             state="disabled"
         )
-        self.export_btn.grid(row=3, column=0, columnspan=3, sticky="ew", padx=18, pady=(12, 16))
+        self.export_btn.grid(row=3, column=0, columnspan=3, sticky="ew", padx=20, pady=(14, 18))
 
     # ------------------ Mode Switching (Zero Position Shift) ------------------
 
@@ -1657,10 +1850,10 @@ class GeminiTTSApp(ctk.CTk):
         for item in self.batch_processor.items:
             item_row = ctk.CTkFrame(
                 self.queue_frame,
-                fg_color=("#CBD5E1", "#1E293B"),
-                corner_radius=6,
+                fg_color=M3_SURFACE,
+                corner_radius=12,
                 border_width=1,
-                border_color=COLOR_CARD_BORDER
+                border_color=M3_OUTLINE_VARIANT
             )
             item_row.pack(fill="x", padx=6, pady=3)
             item_row.grid_columnconfigure(1, weight=1)
@@ -1680,13 +1873,13 @@ class GeminiTTSApp(ctk.CTk):
             name_lbl.grid(row=0, column=1, sticky="w", padx=6, pady=6)
 
             # Status Badge
-            status_color = "#94A3B8"
+            status_color = COLOR_MUTED_TEXT
             if "Fertig" in item.status:
                 status_color = "#10B981"
             elif "Fehler" in item.status:
-                status_color = "#EF4444"
+                status_color = M3_ERROR
             elif "generiert" in item.status or "Konvertiere" in item.status or "Übersetze" in item.status:
-                status_color = "#38BDF8"
+                status_color = M3_PRIMARY
 
             status_lbl = ctk.CTkLabel(
                 item_row,
@@ -1696,35 +1889,40 @@ class GeminiTTSApp(ctk.CTk):
             )
             status_lbl.grid(row=0, column=2, padx=10, pady=6)
 
-            # Play Button for completed items
+            # Play Button for completed items (M3 Tonal Pill)
             if item.output_audio and item.output_audio.exists():
                 play_item_btn = ctk.CTkButton(
                     item_row,
                     text="▶ Anhören",
                     command=lambda path=item.output_audio: self._play_batch_item_audio(path),
-                    width=80,
-                    height=26,
+                    width=86,
+                    height=28,
+                    corner_radius=14,
                     font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-                    fg_color=COLOR_ACCENT,
-                    hover_color=COLOR_ACCENT_HOVER,
-                    text_color="#FFFFFF"
+                    fg_color=M3_PRIMARY_CONTAINER,
+                    hover_color=("#B6E4DA", "#00645A"),
+                    text_color=M3_ON_PRIMARY_CONTAINER,
+                    border_width=0
                 )
                 play_item_btn.grid(row=0, column=3, padx=6, pady=6)
 
-            # Remove button
+            # Remove button (M3 Destructive Outlined)
             if not self.batch_processor.is_running:
                 del_btn = ctk.CTkButton(
                     item_row,
                     text="✕",
                     command=lambda it_id=item.id: self._remove_batch_item(it_id),
                     width=28,
-                    height=26,
+                    height=28,
+                    corner_radius=14,
                     font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-                    fg_color="#DC2626",
-                    hover_color="#B91C1C",
-                    text_color="#FFFFFF"
+                    fg_color="transparent",
+                    hover_color=M3_ERROR_HOVER,
+                    text_color=M3_ERROR,
+                    border_width=1,
+                    border_color=M3_ERROR_CONTAINER
                 )
-                del_btn.grid(row=0, column=4, padx=(0, 6), pady=6)
+                del_btn.grid(row=0, column=4, padx=(0, 8), pady=6)
 
     def _remove_batch_item(self, item_id: str):
         self.batch_processor.remove_item(item_id)
@@ -1857,6 +2055,8 @@ class GeminiTTSApp(ctk.CTk):
         ctk.set_appearance_mode(new_mode)
         if hasattr(self, "waveform_view"):
             self.waveform_view.redraw()
+        if hasattr(self, "mode_segmented") and hasattr(self.mode_segmented, "_update_button_styles"):
+            self.mode_segmented._update_button_styles()
 
     def _update_counters(self, event=None):
         content = self.text_input.get("0.0", "end").strip()
