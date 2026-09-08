@@ -2,6 +2,7 @@
 Configuration and constants for Gemini TTS Interface
 """
 
+import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv, set_key
@@ -17,9 +18,38 @@ else:
 ENV_FILE = BASE_DIR / ".env"
 OUTPUT_DIR = BASE_DIR / "output"
 TEMP_DIR = BASE_DIR / "temp"
+CUSTOM_STYLES_FILE = BASE_DIR / "custom_styles.json"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR.mkdir(exist_ok=True)
+
+
+def load_custom_styles() -> dict:
+    """Load user-defined style presets from custom_styles.json."""
+    if CUSTOM_STYLES_FILE.exists():
+        try:
+            with open(CUSTOM_STYLES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_custom_style(name: str, directive: str):
+    """Save a user-defined style preset."""
+    styles = load_custom_styles()
+    styles[name] = directive
+    with open(CUSTOM_STYLES_FILE, "w", encoding="utf-8") as f:
+        json.dump(styles, f, ensure_ascii=False, indent=2)
+
+
+def delete_custom_style(name: str):
+    """Delete a user-defined style preset."""
+    styles = load_custom_styles()
+    if name in styles:
+        del styles[name]
+        with open(CUSTOM_STYLES_FILE, "w", encoding="utf-8") as f:
+            json.dump(styles, f, ensure_ascii=False, indent=2)
 
 # Load environment variables (from .env next to exe/script or current dir)
 load_dotenv(ENV_FILE)

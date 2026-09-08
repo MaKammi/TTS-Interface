@@ -1,7 +1,7 @@
 """
 Modern, high-contrast GUI for Gemini TTS Studio
 Includes Single-Text Mode with Document Importer and Full Batch / Document Queue Processing.
-Features Global System-Prompt / Tone Directives, 30+ Languages, and Automatic Translation.
+Features Global System-Prompt / Tone Directives with Custom Preset Saving, 32 Languages, and Automatic Translation.
 Rock-solid stable layout hierarchy where no elements jump or shift when switching tabs.
 """
 
@@ -26,6 +26,9 @@ from .config import (
     save_api_key,
     OUTPUT_DIR,
     TEMP_DIR,
+    load_custom_styles,
+    save_custom_style,
+    delete_custom_style,
 )
 from .tts_service import GeminiTTSService
 from .audio_converter import convert_audio
@@ -179,7 +182,8 @@ class GeminiTTSApp(ctk.CTk):
         self.is_generating = False
         self.is_user_scrubbing = False
         self.is_format_collapsed = True   # Collapsed by default
-        self.is_style_collapsed = True    # Collapsed by default
+        self.is_style_collapsed = False   # Open by default as requested
+        self.is_tags_collapsed = True     # Tags under main text field collapsed by default
         self.current_mode = "single"       # "single" or "batch"
         self.batch_output_dir = OUTPUT_DIR / "batch_exports"
 
@@ -274,7 +278,7 @@ class GeminiTTSApp(ctk.CTk):
 
         text_title = ctk.CTkLabel(
             text_header_frame,
-            text="📝 Texteingabe & Regieanweisungen",
+            text="📝 Haupttext zur Sprachausgabe",
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
@@ -318,7 +322,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.char_counter_lbl.pack(side="right", padx=(0, 6))
 
-        # Text input area
+        # Main text input area
         self.text_input = ctk.CTkTextbox(
             self.single_text_card,
             height=130,
@@ -347,21 +351,39 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.auto_translate_check.pack(side="left")
 
-        # Audio-Tags Toolbar (Responsive 2-Row Grid)
-        tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        tag_section_frame.pack(fill="x", padx=18, pady=(0, 14))
+        # Audio-Tags Toolbar (Collapsible by default as requested)
+        self.tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
+        self.tag_section_frame.pack(fill="x", padx=18, pady=(0, 10))
+
+        tag_header_row = ctk.CTkFrame(self.tag_section_frame, fg_color="transparent")
+        tag_header_row.pack(fill="x", pady=(0, 4))
 
         tag_title_lbl = ctk.CTkLabel(
-            tag_section_frame,
-            text="🎭 Audio-Tags einfügen (an Cursor-Position):",
+            tag_header_row,
+            text="🎭 Audio-Tags einfügen (z. B. [lachen], [flüstern], [Pause]):",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=("#1D4ED8", "#60A5FA")
         )
-        tag_title_lbl.pack(anchor="w", pady=(0, 6))
+        tag_title_lbl.pack(side="left")
 
-        tag_buttons_frame = ctk.CTkFrame(tag_section_frame, fg_color="transparent")
-        tag_buttons_frame.pack(fill="x", anchor="w")
-        tag_buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        self.tag_toggle_btn = ctk.CTkButton(
+            tag_header_row,
+            text="▾ Audio-Tags anzeigen",
+            command=self._toggle_tags_panel,
+            height=28,
+            width=160,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=("#334155", "#0F172A"),
+            hover_color=("#1E293B", "#1E3A8A"),
+            text_color="#FFFFFF",
+            border_width=1.5,
+            border_color=("#64748B", "#38BDF8")
+        )
+        self.tag_toggle_btn.pack(side="right")
+
+        self.tag_buttons_frame = ctk.CTkFrame(self.tag_section_frame, fg_color="transparent")
+        self.tag_buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        # Collapsed by default
 
         tags_display_list = [
             ("[lachen]", "+ [lachen]"),
@@ -380,7 +402,7 @@ class GeminiTTSApp(ctk.CTk):
             row_idx = i // 5
             col_idx = i % 5
             btn = ctk.CTkButton(
-                tag_buttons_frame,
+                self.tag_buttons_frame,
                 text=label_text,
                 command=lambda t=tag_code: self._insert_tag(t),
                 height=32,
@@ -561,7 +583,138 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.queue_empty_lbl.pack(pady=20)
 
-        # ------------------ 3. Permanent Voice, Language & Model Card ------------------
+        # ------------------ 3. Regieanweisung & Sprechstil (System-Prompt) Card (MOVED UP) ------------------
+        # Positioned right below the input container so it is immediately adjacent to the text!
+        self.style_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.style_card.pack(fill="x", pady=(0, 10))
+
+        # Header Row
+        self.style_header_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
+        self.style_header_frame.pack(fill="x", padx=18, pady=(12, 6))
+
+        self.style_title_lbl = ctk.CTkLabel(
+            self.style_header_frame,
+            text="🎭 Regieanweisung & Sprechstil (System-Prompt)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.style_title_lbl.pack(side="left")
+
+        self.style_toggle_btn = ctk.CTkButton(
+            self.style_header_frame,
+            text="▴ Zuklappen",
+            command=self._toggle_style_panel,
+            width=120,
+            height=28,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=("#334155", "#0F172A"),
+            hover_color=("#1E293B", "#1E3A8A"),
+            text_color="#FFFFFF",
+            border_width=1.5,
+            border_color=("#64748B", "#38BDF8")
+        )
+        self.style_toggle_btn.pack(side="right")
+
+        # Body Container (Open by default)
+        self.style_body_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
+        self.style_body_frame.pack(fill="x", padx=18, pady=(0, 12))
+
+        # Presets Toolbar Row
+        preset_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
+        preset_style_row.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(
+            preset_style_row,
+            text="Stil-Vorlage:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left", padx=(0, 8))
+
+        self.style_preset_var = ctk.StringVar(value=STYLE_SUGGESTIONS[0][0])
+        self.style_preset_menu = ctk.CTkOptionMenu(
+            preset_style_row,
+            values=[p[0] for p in STYLE_SUGGESTIONS],
+            variable=self.style_preset_var,
+            command=self._on_style_preset_changed,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=COLOR_ACCENT,
+            button_color="#1D4ED8",
+            button_hover_color="#1E3A8A",
+            text_color="#FFFFFF"
+        )
+        self.style_preset_menu.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        save_style_btn = ctk.CTkButton(
+            preset_style_row,
+            text="💾 Als Vorlage speichern...",
+            command=self._save_current_style_preset,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=("#059669", "#047857"),
+            hover_color=("#047857", "#059669"),
+            text_color="#FFFFFF"
+        )
+        save_style_btn.pack(side="left", padx=(0, 6))
+
+        delete_style_btn = ctk.CTkButton(
+            preset_style_row,
+            text="🗑️ Vorlage löschen",
+            command=self._delete_current_style_preset,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#475569",
+            hover_color="#DC2626",
+            text_color="#FFFFFF"
+        )
+        delete_style_btn.pack(side="left", padx=(0, 6))
+
+        clear_style_btn = ctk.CTkButton(
+            preset_style_row,
+            text="Leeren",
+            command=self._clear_style,
+            width=70,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#334155",
+            hover_color="#1E293B",
+            text_color="#FFFFFF"
+        )
+        clear_style_btn.pack(side="left")
+
+        # Multi-line Textarea for Regieanweisung
+        self.style_input = ctk.CTkTextbox(
+            self.style_body_frame,
+            height=65,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            wrap="word",
+            border_width=1.5,
+            border_color=("#94A3B8", "#475569"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.style_input.pack(fill="x", pady=(0, 6))
+
+        style_hint_lbl = ctk.CTkLabel(
+            self.style_body_frame,
+            text="💡 Beschreibe Tonfall, Sprechrolle oder Atmosphäre (z. B. 'Ruhig und gelassen wie in einer Dokumentation', 'Aufgeregt und enthusiastisch', etc.). Wird von Gemini TTS tonal umgesetzt, aber nicht vorgelesen.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT,
+            wraplength=800,
+            justify="left"
+        )
+        style_hint_lbl.pack(anchor="w")
+
+        # Refresh presets menu with user saved presets
+        self._refresh_style_presets()
+
+        # ------------------ 4. Permanent Voice, Language & Model Card ------------------
         voice_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -677,108 +830,6 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
-
-        # ------------------ 4. Permanent Collapsible Style & System-Prompt Card ------------------
-        self.style_card = ctk.CTkFrame(
-            main_content,
-            corner_radius=12,
-            fg_color=COLOR_CARD_BG,
-            border_width=1.5,
-            border_color=COLOR_CARD_BORDER
-        )
-        self.style_card.pack(fill="x", pady=(0, 10))
-
-        # Collapsible Header
-        self.style_header_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
-        self.style_header_frame.pack(fill="x", padx=18, pady=10)
-
-        self.style_title_lbl = ctk.CTkLabel(
-            self.style_header_frame,
-            text="🎭 Regieanweisung & Sprechstil (System-Prompt): Keine (Standard)",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
-        )
-        self.style_title_lbl.pack(side="left")
-
-        self.style_toggle_btn = ctk.CTkButton(
-            self.style_header_frame,
-            text="▾ Stil anpassen",
-            command=self._toggle_style_panel,
-            width=160,
-            height=32,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#334155", "#0F172A"),
-            hover_color=("#1E293B", "#1E3A8A"),
-            text_color="#FFFFFF",
-            border_width=1.5,
-            border_color=("#64748B", "#38BDF8")
-        )
-        self.style_toggle_btn.pack(side="right")
-
-        # Collapsible Body Container (hidden by default)
-        self.style_body_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
-
-        preset_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
-        preset_style_row.pack(fill="x", padx=18, pady=(0, 8))
-
-        ctk.CTkLabel(
-            preset_style_row,
-            text="Stil-Vorlage:",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
-        ).pack(side="left", padx=(0, 10))
-
-        style_preset_names = [p[0] for p in STYLE_SUGGESTIONS]
-        self.style_preset_var = ctk.StringVar(value=style_preset_names[0])
-        self.style_preset_menu = ctk.CTkOptionMenu(
-            preset_style_row,
-            values=style_preset_names,
-            variable=self.style_preset_var,
-            command=self._on_style_preset_changed,
-            height=34,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            fg_color=COLOR_ACCENT,
-            button_color="#1D4ED8",
-            button_hover_color="#1E3A8A",
-            text_color="#FFFFFF"
-        )
-        self.style_preset_menu.pack(side="left", fill="x", expand=True)
-
-        custom_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
-        custom_style_row.pack(fill="x", padx=18, pady=(0, 14))
-
-        ctk.CTkLabel(
-            custom_style_row,
-            text="Eigene Regieanweisung:",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
-        ).pack(side="left", padx=(0, 10))
-
-        self.style_input = ctk.CTkEntry(
-            custom_style_row,
-            placeholder_text="z. B. calm, warm, documentary narrator style oder Sprich wie ein alter weiser Zauberer",
-            height=34,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            border_width=1.5,
-            border_color=("#94A3B8", "#475569"),
-            text_color=COLOR_PRIMARY_TEXT
-        )
-        self.style_input.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.style_input.bind("<KeyRelease>", self._on_style_input_changed)
-
-        clear_style_btn = ctk.CTkButton(
-            custom_style_row,
-            text="Zurücksetzen",
-            command=self._clear_style,
-            width=100,
-            height=34,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color="#475569",
-            hover_color="#334155",
-            text_color="#FFFFFF"
-        )
-        clear_style_btn.pack(side="right")
 
         # ------------------ 5. Permanent Collapsible Audio Format Card ------------------
         self.format_card = ctk.CTkFrame(
@@ -1187,6 +1238,19 @@ class GeminiTTSApp(ctk.CTk):
             self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
             self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
 
+    # ------------------ Collapsible Audio-Tags Panel ------------------
+
+    def _toggle_tags_panel(self):
+        """Toggle collapsible Audio-Tags panel under main text field."""
+        if self.is_tags_collapsed:
+            self.tag_buttons_frame.pack(fill="x", anchor="w", pady=(6, 0))
+            self.tag_toggle_btn.configure(text="▴ Tags verbergen")
+            self.is_tags_collapsed = False
+        else:
+            self.tag_buttons_frame.pack_forget()
+            self.tag_toggle_btn.configure(text="▾ Audio-Tags anzeigen")
+            self.is_tags_collapsed = True
+
     # ------------------ Translation (Single Text) ------------------
 
     def _translate_single_text(self):
@@ -1232,12 +1296,12 @@ class GeminiTTSApp(ctk.CTk):
         self.status_lbl.configure(text=f"❌ Übersetzungsfehler: {err_msg}", text_color="#EF4444")
         messagebox.showerror("Übersetzungsfehler", f"Fehler bei der Übersetzung:\n{err_msg}")
 
-    # ------------------ System-Prompt & Style Panel ------------------
+    # ------------------ System-Prompt & Style Panel with Custom Preset Saving ------------------
 
     def _toggle_style_panel(self):
         """Toggle collapsible Style / System-Prompt panel."""
         if self.is_style_collapsed:
-            self.style_body_frame.pack(fill="x", padx=0, pady=(0, 0))
+            self.style_body_frame.pack(fill="x", padx=18, pady=(0, 12))
             self.style_toggle_btn.configure(text="▴ Zuklappen")
             self.is_style_collapsed = False
         else:
@@ -1245,33 +1309,79 @@ class GeminiTTSApp(ctk.CTk):
             self.style_toggle_btn.configure(text="▾ Stil anpassen")
             self.is_style_collapsed = True
 
+    def _refresh_style_presets(self, select_name: Optional[str] = None):
+        """Reloads built-in suggestions and user custom styles into the OptionMenu."""
+        custom_styles = load_custom_styles()
+        built_in_names = [p[0] for p in STYLE_SUGGESTIONS]
+        
+        all_names = list(built_in_names)
+        if custom_styles:
+            for c_name in sorted(custom_styles.keys()):
+                all_names.append(f"⭐ {c_name}")
+
+        self.style_preset_menu.configure(values=all_names)
+        if select_name and select_name in all_names:
+            self.style_preset_var.set(select_name)
+        elif not self.style_preset_var.get() or self.style_preset_var.get() not in all_names:
+            self.style_preset_var.set(all_names[0])
+
     def _on_style_preset_changed(self, choice: str):
+        # Check built-in suggestions
         for name, directive in STYLE_SUGGESTIONS:
             if name == choice:
-                self.style_input.delete(0, "end")
+                self.style_input.delete("0.0", "end")
                 if directive:
-                    self.style_input.insert(0, directive)
-                self._update_style_title()
-                break
+                    self.style_input.insert("0.0", directive)
+                return
 
-    def _on_style_input_changed(self, event=None):
-        self._update_style_title()
+        # Check user-saved custom styles
+        if choice.startswith("⭐ "):
+            raw_name = choice[2:]
+            custom_styles = load_custom_styles()
+            if raw_name in custom_styles:
+                self.style_input.delete("0.0", "end")
+                self.style_input.insert("0.0", custom_styles[raw_name])
 
-    def _update_style_title(self):
-        val = self.style_input.get().strip()
-        if not val:
-            self.style_title_lbl.configure(text="🎭 Regieanweisung & Sprechstil (System-Prompt): Keine (Standard)")
-        else:
-            short_val = val[:45] + "..." if len(val) > 45 else val
-            self.style_title_lbl.configure(text=f"🎭 Regieanweisung: {short_val}")
+    def _save_current_style_preset(self):
+        """Saves current text in style_input as a custom reusable preset."""
+        directive = self.style_input.get("0.0", "end").strip()
+        if not directive:
+            messagebox.showwarning("Hinweis", "Bitte gib zuerst eine Regieanweisung im Textfeld ein.")
+            return
+
+        dialog = ctk.CTkInputDialog(
+            text="Name für die neue Stil-Vorlage eingeben:\n(z. B. 'Dokumentation Ruhig', 'Podcast Host', 'Märchenerzähler')",
+            title="Stil-Vorlage speichern"
+        )
+        name = dialog.get_input()
+        if not name or not name.strip():
+            return
+        
+        name = name.strip()
+        save_custom_style(name, directive)
+        self._refresh_style_presets(select_name=f"⭐ {name}")
+        messagebox.showinfo("Gespeichert", f"Die Vorlage '{name}' wurde erfolgreich gespeichert und zur Auswahl hinzugefügt!")
+
+    def _delete_current_style_preset(self):
+        """Deletes currently selected user preset."""
+        current_choice = self.style_preset_var.get()
+        if not current_choice.startswith("⭐ "):
+            messagebox.showinfo("Hinweis", "Nur selbst gespeicherte Vorlagen (mit ⭐ gekennzeichnet) können gelöscht werden.")
+            return
+
+        raw_name = current_choice[2:]
+        if messagebox.askyesno("Vorlage löschen", f"Möchtest du die Vorlage '{raw_name}' wirklich löschen?"):
+            delete_custom_style(raw_name)
+            self._refresh_style_presets()
+            self._clear_style()
+            messagebox.showinfo("Gelöscht", f"Die Vorlage '{raw_name}' wurde gelöscht.")
 
     def _clear_style(self):
         self.style_preset_var.set(STYLE_SUGGESTIONS[0][0])
-        self.style_input.delete(0, "end")
-        self._update_style_title()
+        self.style_input.delete("0.0", "end")
 
     def _get_current_system_prompt(self) -> Optional[str]:
-        prompt = self.style_input.get().strip()
+        prompt = self.style_input.get("0.0", "end").strip()
         return prompt if prompt else None
 
     # ------------------ Document Importer (Single Text) ------------------
