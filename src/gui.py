@@ -5,10 +5,13 @@ Features Global System-Prompt / Tone Directives with Custom Preset Saving, 32 La
 Rock-solid stable layout hierarchy where no elements jump or shift when switching tabs.
 """
 
+import math
 import os
+import struct
 import subprocess
 import threading
 import time
+import wave
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -38,17 +41,153 @@ from .batch_processor import BatchProcessor, BatchItem
 from .translation_service import TranslationService
 
 
-ctk.set_appearance_mode("Dark")
+ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# Typography & Color Constants for High Readability and Maximum Contrast
+# Typography & Color Constants for ZQP Design System (www.zqp.de)
 FONT_FAMILY = "Segoe UI"
-COLOR_PRIMARY_TEXT = ("#0F172A", "#FFFFFF")       # Pure White in dark mode
-COLOR_MUTED_TEXT = ("#334155", "#E2E8F0")         # Bright, clear secondary text
-COLOR_ACCENT = "#2563EB"                           # High-contrast vibrant blue
-COLOR_ACCENT_HOVER = "#1D4ED8"
-COLOR_CARD_BG = ("#FFFFFF", "#1E293B")            # Deep Slate card background
-COLOR_CARD_BORDER = ("#CBD5E1", "#334155")        # Clean contrast border
+COLOR_PRIMARY_TEXT = ("#23282D", "#E6F2F0")       # Dark Charcoal (Light) / Off-White (Dark)
+COLOR_MUTED_TEXT = ("#5B7C7B", "#8EABA7")         # Soft Muted Teal-Grey
+COLOR_ACCENT = ("#245C56", "#2F7A6D")             # ZQP Forest Teal / Petrol
+COLOR_ACCENT_HOVER = ("#1B5C53", "#3D998C")       # Darker Petrol (Light) / Glowing Teal (Dark)
+COLOR_CTA = "#F56E28"                              # ZQP Signal-Orange / Coral
+COLOR_CTA_HOVER = "#DC5D1D"
+COLOR_CARD_BG = ("#FFFFFF", "#172725")            # Pure White (Light) / Dark Slate Petrol (Dark)
+COLOR_CARD_BORDER = ("#D6E6E1", "#263D3A")        # Subtle Teal-Grey (Light) / Deep Petrol Border (Dark)
+COLOR_APP_BG = ("#F3F8F7", "#101A19")             # Soft Mint-Grey Window Background
+COLOR_SUBCARD_BG = ("#F8FAFA", "#121E1C")
+
+
+class WaveformCanvas(ctk.CTkCanvas):
+    """
+    Visual audio waveform display composed of vertical amplitude bars.
+    Supports real audio peak extraction, interactive scrubbing, and theme adaptation.
+    """
+
+    def __init__(self, parent, on_seek_callback=None, **kwargs):
+        super().__init__(parent, highlightthickness=0, **kwargs)
+        self.on_seek_callback = on_seek_callback
+        self.amplitudes: List[float] = self._generate_idle_wave()
+        self.progress: float = 0.0
+        self.is_scrubbing = False
+
+        self.bind("<Configure>", self._on_resize)
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.bind("<Enter>", lambda e: self.config(cursor="hand2"))
+        self.bind("<Leave>", lambda e: self.config(cursor=""))
+
+    def _generate_idle_wave(self, num_bars: int = 80) -> List[float]:
+        """Generate a gentle baseline wave when no audio is loaded."""
+        wave_pts = []
+        for i in range(num_bars):
+            v = 0.28 + 0.18 * math.sin(i * 0.22) + 0.09 * math.cos(i * 0.44)
+            wave_pts.append(max(0.12, min(0.75, v)))
+        return wave_pts
+
+    def load_audio(self, wav_path: Path | str, num_bars: int = 80):
+        """Extract peak amplitudes from a WAV audio file."""
+        try:
+            p = Path(wav_path)
+            if not p.exists():
+                return
+            with wave.open(str(p), "rb") as wf:
+                width = wf.getsampwidth()
+                frames = wf.getnframes()
+                if frames == 0 or width != 2:
+                    return
+                chunk_size = max(1, frames // num_bars)
+                peaks = []
+                for _ in range(num_bars):
+                    data = wf.readframes(chunk_size)
+                    if not data:
+                        break
+                    count = len(data) // 2
+                    samples = struct.unpack(f"<{count}h", data)
+                    step = max(1, count // 40)
+                    sub = [abs(s) for s in samples[::step]]
+                    avg = sum(sub) / len(sub) if sub else 0
+                    peaks.append(avg)
+
+                max_p = max(peaks) if peaks and max(peaks) > 0 else 1
+                self.amplitudes = [max(0.12, min(0.95, p / max_p)) for p in peaks]
+        except Exception as e:
+            print(f"Hinweis: Waveform konnte nicht aus Audio geladen werden: {e}")
+            self.amplitudes = self._generate_idle_wave(num_bars)
+
+        self.redraw()
+
+    def set_progress(self, progress: float):
+        self.progress = max(0.0, min(1.0, progress))
+        self.redraw()
+
+    def _on_resize(self, event=None):
+        self.redraw()
+
+    def _on_click(self, event):
+        self.is_scrubbing = True
+        self._seek_from_event(event)
+
+    def _on_drag(self, event):
+        if self.is_scrubbing:
+            self._seek_from_event(event)
+
+    def _on_release(self, event):
+        self.is_scrubbing = False
+        self._seek_from_event(event)
+
+    def _seek_from_event(self, event):
+        w = self.winfo_width()
+        if w > 0:
+            pct = max(0.0, min(1.0, event.x / float(w)))
+            self.progress = pct
+            self.redraw()
+            if self.on_seek_callback:
+                self.on_seek_callback(pct)
+
+    def redraw(self):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+
+        is_dark = (ctk.get_appearance_mode() == "Dark")
+        bg_color = "#121E1C" if is_dark else "#F4F7F6"
+        self.configure(bg=bg_color)
+
+        color_active = "#3D998C" if is_dark else "#245C56"
+        color_inactive = "#263D3A" if is_dark else "#D6E6E1"
+        color_playhead = "#F56E28"
+
+        n = len(self.amplitudes)
+        if n == 0:
+            return
+
+        gap = 2.0
+        bar_width = max(2.0, (w - (n * gap)) / float(n))
+        total_bar_slot = bar_width + gap
+
+        center_y = h / 2.0
+        max_half_h = (h / 2.0) - 3.0
+
+        for i, amp in enumerate(self.amplitudes):
+            x0 = i * total_bar_slot + (gap / 2.0)
+            x1 = x0 + bar_width
+            bar_h = max(2.5, amp * max_half_h)
+            y0 = center_y - bar_h
+            y1 = center_y + bar_h
+
+            bar_pct = i / float(n)
+            fill_col = color_active if bar_pct <= self.progress else color_inactive
+
+            self.create_rectangle(x0, y0, x1, y1, fill=fill_col, outline="", width=0)
+
+        # Playhead indicator
+        playhead_x = self.progress * w
+        self.create_line(playhead_x, 1, playhead_x, h - 1, fill=color_playhead, width=2.5)
+
 
 
 class APIKeyDialog(ctk.CTkToplevel):
@@ -195,7 +334,7 @@ class GeminiTTSApp(ctk.CTk):
         self.grid_rowconfigure(1, weight=1)
 
         # ------------------ Header Bar ------------------
-        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("#E2E8F0", "#0F172A"))
+        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("#E3EEEC", "#121E1C"))
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
         header_frame.grid_columnconfigure(1, weight=1)
 
@@ -215,25 +354,26 @@ class GeminiTTSApp(ctk.CTk):
             width=180,
             height=34,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#CBD5E1", "#1E293B"),
-            hover_color=("#94A3B8", "#334155"),
+            fg_color=("#D6E6E1", "#1B2E2B"),
+            hover_color=("#BBD1CD", "#245C56"),
             text_color=COLOR_PRIMARY_TEXT,
             border_width=1.5,
-            border_color=("#94A3B8", "#475569")
+            border_color=COLOR_CARD_BORDER
         )
         self.key_status_btn.grid(row=0, column=2, padx=(0, 12), pady=14, sticky="e")
 
-        theme_switch = ctk.CTkSwitch(
+        self.theme_switch = ctk.CTkSwitch(
             header_frame,
-            text="Dark Mode",
+            text="Dunkelmodus",
             command=self._toggle_theme,
             onvalue="Dark",
             offvalue="Light",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
+            text_color=COLOR_PRIMARY_TEXT,
+            progress_color=COLOR_ACCENT[0]
         )
-        theme_switch.select()
-        theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
+        # Default is Light mode (unselected)
+        self.theme_switch.grid(row=0, column=3, padx=18, pady=14, sticky="e")
 
         # ------------------ Main Auto-Scrollable Content Frame ------------------
         main_content = AutoScrollableFrame(self, fg_color="transparent")
@@ -249,11 +389,11 @@ class GeminiTTSApp(ctk.CTk):
             values=["✍️ Einzeltext-Modus", "📂 Dokumenten- & Batch-Import"],
             command=self._on_mode_switched,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            selected_color=COLOR_ACCENT,
-            selected_hover_color=COLOR_ACCENT_HOVER,
-            unselected_color=("#CBD5E1", "#1E293B"),
-            unselected_hover_color=("#94A3B8", "#334155"),
-            text_color="#FFFFFF",
+            selected_color=COLOR_ACCENT[0],
+            selected_hover_color=COLOR_ACCENT_HOVER[0],
+            unselected_color=("#D6E6E1", "#172725"),
+            unselected_hover_color=("#BBD1CD", "#263D3A"),
+            text_color=("#FFFFFF", "#FFFFFF"),
             height=38
         )
         self.mode_segmented.set("✍️ Einzeltext-Modus")
@@ -278,7 +418,7 @@ class GeminiTTSApp(ctk.CTk):
 
         text_title = ctk.CTkLabel(
             text_header_frame,
-            text="📝 Haupttext zur Sprachausgabe",
+            text="📝 Haupttext zur Sprachausgabe (Skriptfeld)",
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
@@ -291,11 +431,11 @@ class GeminiTTSApp(ctk.CTk):
             command=self._translate_single_text,
             height=30,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#0284C7", "#0369A1"),
-            hover_color=("#0369A1", "#0284C7"),
+            fg_color=COLOR_ACCENT[0],
+            hover_color=COLOR_ACCENT_HOVER[0],
             text_color="#FFFFFF",
             border_width=1.5,
-            border_color=("#38BDF8", "#38BDF8")
+            border_color=COLOR_CARD_BORDER
         )
         self.translate_single_btn.pack(side="right", padx=(8, 0))
 
@@ -306,11 +446,11 @@ class GeminiTTSApp(ctk.CTk):
             command=self._load_document_to_single_text,
             height=30,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            fg_color=("#334155", "#0F172A"),
-            hover_color=("#1E293B", "#1E3A8A"),
-            text_color="#FFFFFF",
+            fg_color=("#D6E6E1", "#1B2E2B"),
+            hover_color=("#BBD1CD", "#245C56"),
+            text_color=COLOR_PRIMARY_TEXT,
             border_width=1.5,
-            border_color=("#64748B", "#38BDF8")
+            border_color=COLOR_CARD_BORDER
         )
         load_doc_btn.pack(side="right", padx=(8, 0))
 
@@ -322,14 +462,15 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.char_counter_lbl.pack(side="right", padx=(0, 6))
 
-        # Main text input area
+        # Main text input area (Enlarged to 250px as dominant Hero field)
         self.text_input = ctk.CTkTextbox(
             self.single_text_card,
-            height=130,
+            height=250,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14),
             wrap="word",
             border_width=1.5,
-            border_color=("#94A3B8", "#475569"),
+            border_color=COLOR_CARD_BORDER,
+            fg_color=("#FFFFFF", "#111D1B"),
             text_color=COLOR_PRIMARY_TEXT
         )
         self.text_input.pack(fill="x", padx=18, pady=(0, 6))
@@ -347,7 +488,9 @@ class GeminiTTSApp(ctk.CTk):
             text="Text vor Vertonung automatisch in die ausgewählte Zielsprache übersetzen",
             variable=self.auto_translate_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_PRIMARY_TEXT
+            text_color=COLOR_PRIMARY_TEXT,
+            fg_color=COLOR_ACCENT[0],
+            hover_color=COLOR_ACCENT_HOVER[0]
         )
         self.auto_translate_check.pack(side="left")
 
@@ -362,7 +505,7 @@ class GeminiTTSApp(ctk.CTk):
             tag_header_row,
             text="🎭 Audio-Tags einfügen (z. B. [lachen], [flüstern], [Pause]):",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=("#1D4ED8", "#60A5FA")
+            text_color=COLOR_ACCENT[0]
         )
         tag_title_lbl.pack(side="left")
 
@@ -373,11 +516,11 @@ class GeminiTTSApp(ctk.CTk):
             height=28,
             width=160,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color=("#334155", "#0F172A"),
-            hover_color=("#1E293B", "#1E3A8A"),
-            text_color="#FFFFFF",
+            fg_color=("#D6E6E1", "#1B2E2B"),
+            hover_color=("#BBD1CD", "#245C56"),
+            text_color=COLOR_PRIMARY_TEXT,
             border_width=1.5,
-            border_color=("#64748B", "#38BDF8")
+            border_color=COLOR_CARD_BORDER
         )
         self.tag_toggle_btn.pack(side="right")
 
@@ -407,12 +550,12 @@ class GeminiTTSApp(ctk.CTk):
                 command=lambda t=tag_code: self._insert_tag(t),
                 height=32,
                 font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-                fg_color=("#334155", "#0F172A"),
-                hover_color=("#1E293B", "#1E3A8A"),
-                text_color="#FFFFFF",
+                fg_color=("#F3F8F7", "#172725"),
+                hover_color=("#E3EEEC", "#245C56"),
+                text_color=COLOR_PRIMARY_TEXT,
                 corner_radius=8,
                 border_width=1.5,
-                border_color=("#64748B", "#38BDF8")
+                border_color=COLOR_CARD_BORDER
             )
             btn.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="ew")
 
@@ -1019,10 +1162,10 @@ class GeminiTTSApp(ctk.CTk):
             self.single_action_card,
             text="⚡ Sprache generieren & konvertieren",
             command=self._start_generation_thread,
-            height=48,
+            height=50,
             font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
-            fg_color="#059669",
-            hover_color="#047857",
+            fg_color=COLOR_CTA,
+            hover_color=COLOR_CTA_HOVER,
             text_color="#FFFFFF",
             text_color_disabled="#FFFFFF"
         )
@@ -1032,8 +1175,8 @@ class GeminiTTSApp(ctk.CTk):
             self.single_action_card,
             height=10,
             corner_radius=5,
-            progress_color="#38BDF8",
-            fg_color="#0F172A"
+            progress_color=COLOR_ACCENT[0],
+            fg_color=("#D6E6E1", "#172725")
         )
         self.progress_bar.pack(fill="x", padx=18, pady=(0, 8))
         self.progress_bar.set(0.0)
@@ -1065,8 +1208,8 @@ class GeminiTTSApp(ctk.CTk):
             command=self._batch_start_processing,
             height=46,
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
-            fg_color="#059669",
-            hover_color="#047857",
+            fg_color=COLOR_CTA,
+            hover_color=COLOR_CTA_HOVER,
             text_color="#FFFFFF"
         )
         self.batch_start_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -1089,8 +1232,8 @@ class GeminiTTSApp(ctk.CTk):
             self.batch_action_card,
             height=10,
             corner_radius=5,
-            progress_color="#38BDF8",
-            fg_color="#0F172A"
+            progress_color=COLOR_ACCENT[0],
+            fg_color=("#D6E6E1", "#172725")
         )
         self.batch_progress_bar.pack(fill="x", padx=18, pady=(0, 8))
         self.batch_progress_bar.set(0.0)
@@ -1121,11 +1264,29 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=18, pady=(14, 10))
+        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=18, pady=(14, 8))
 
-        # Controls row
+        # Row 1: Visual Audio Waveform Canvas Display
+        waveform_container = ctk.CTkFrame(
+            player_card,
+            fg_color=COLOR_SUBCARD_BG,
+            corner_radius=8,
+            border_width=1,
+            border_color=COLOR_CARD_BORDER
+        )
+        waveform_container.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 10))
+        waveform_container.grid_columnconfigure(0, weight=1)
+
+        self.waveform_view = WaveformCanvas(
+            waveform_container,
+            on_seek_callback=self._on_waveform_seek,
+            height=54
+        )
+        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+
+        # Row 2: Controls row
         controls_frame = ctk.CTkFrame(player_card, fg_color="transparent")
-        controls_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=0)
+        controls_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=0)
         controls_frame.grid_columnconfigure(2, weight=1)
 
         self.play_btn = ctk.CTkButton(
@@ -1136,8 +1297,8 @@ class GeminiTTSApp(ctk.CTk):
             height=38,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             state="disabled",
-            fg_color=COLOR_ACCENT,
-            hover_color=COLOR_ACCENT_HOVER,
+            fg_color=COLOR_ACCENT[0],
+            hover_color=COLOR_ACCENT_HOVER[0],
             text_color="#FFFFFF",
             text_color_disabled="#CBD5E1"
         )
@@ -1166,9 +1327,9 @@ class GeminiTTSApp(ctk.CTk):
             number_of_steps=200,
             state="disabled",
             command=self._on_seek_change,
-            button_color="#38BDF8",
-            button_hover_color="#0284C7",
-            progress_color=COLOR_ACCENT
+            button_color=COLOR_CTA,
+            button_hover_color=COLOR_CTA_HOVER,
+            progress_color=COLOR_ACCENT[0]
         )
         self.timeline_slider.set(0.0)
         self.timeline_slider.grid(row=0, column=2, sticky="ew", padx=10)
@@ -1199,27 +1360,27 @@ class GeminiTTSApp(ctk.CTk):
             to=1.0,
             width=100,
             command=self._on_volume_changed,
-            button_color="#38BDF8",
-            button_hover_color="#0284C7",
-            progress_color=COLOR_ACCENT
+            button_color=COLOR_ACCENT[0],
+            button_hover_color=COLOR_ACCENT_HOVER[0],
+            progress_color=COLOR_ACCENT[0]
         )
         self.volume_slider.set(0.8)
         self.volume_slider.grid(row=0, column=5, padx=(0, 0))
 
-        # Export Button
+        # Row 3: Export Button
         self.export_btn = ctk.CTkButton(
             player_card,
             text="💾 Audiodatei speichern unter...",
             command=self._export_audio,
             height=42,
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
+            fg_color=COLOR_ACCENT[0],
+            hover_color=COLOR_ACCENT_HOVER[0],
             text_color="#FFFFFF",
             text_color_disabled="#CBD5E1",
             state="disabled"
         )
-        self.export_btn.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(14, 16))
+        self.export_btn.grid(row=3, column=0, columnspan=3, sticky="ew", padx=18, pady=(12, 16))
 
     # ------------------ Mode Switching (Zero Position Shift) ------------------
 
@@ -1577,6 +1738,8 @@ class GeminiTTSApp(ctk.CTk):
         self.stop_btn.configure(state="normal")
         self.export_btn.configure(state="normal")
         self.timeline_slider.configure(state="normal")
+        if hasattr(self, "waveform_view") and self.player._playback_file and self.player._playback_file.exists():
+            self.waveform_view.load_audio(self.player._playback_file)
         self._toggle_playback()
 
     def _batch_start_processing(self):
@@ -1690,7 +1853,10 @@ class GeminiTTSApp(ctk.CTk):
 
     def _toggle_theme(self):
         mode = ctk.get_appearance_mode()
-        ctk.set_appearance_mode("Light" if mode == "Dark" else "Dark")
+        new_mode = "Light" if mode == "Dark" else "Dark"
+        ctk.set_appearance_mode(new_mode)
+        if hasattr(self, "waveform_view"):
+            self.waveform_view.redraw()
 
     def _update_counters(self, event=None):
         content = self.text_input.get("0.0", "end").strip()
@@ -1860,6 +2026,14 @@ class GeminiTTSApp(ctk.CTk):
         self.stop_btn.configure(state="normal")
         self.export_btn.configure(state="normal")
         self.timeline_slider.configure(state="normal")
+
+        # Load audio into waveform display
+        if hasattr(self, "waveform_view"):
+            if self.current_generated_wav and self.current_generated_wav.exists():
+                self.waveform_view.load_audio(self.current_generated_wav)
+            elif self.player._playback_file and self.player._playback_file.exists():
+                self.waveform_view.load_audio(self.player._playback_file)
+
         self._toggle_playback()
 
     def _on_generation_error(self, err_msg: str):
@@ -1880,13 +2054,25 @@ class GeminiTTSApp(ctk.CTk):
         if total > 0:
             target_sec = val * total
             self.player.seek(target_sec)
+            if hasattr(self, "waveform_view"):
+                self.waveform_view.set_progress(val)
         self.is_user_scrubbing = False
+
+    def _on_waveform_seek(self, pct: float):
+        self.timeline_slider.set(pct)
+        total = self.player.get_duration()
+        if total > 0:
+            target_sec = pct * total
+            self.player.seek(target_sec)
+            self.time_lbl.configure(text=f"{self._format_time(target_sec)} / {self._format_time(total)}")
 
     def _on_seek_change(self, value):
         total = self.player.get_duration()
         if total > 0:
             curr = float(value) * total
             self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
+            if hasattr(self, "waveform_view") and not getattr(self.waveform_view, "is_scrubbing", False):
+                self.waveform_view.set_progress(float(value))
             if not self.is_user_scrubbing:
                 self.player.seek(curr)
 
@@ -1908,24 +2094,31 @@ class GeminiTTSApp(ctk.CTk):
         self.player.stop()
         self.play_btn.configure(text="▶ Abspielen")
         self.timeline_slider.set(0.0)
+        if hasattr(self, "waveform_view"):
+            self.waveform_view.set_progress(0.0)
         self.time_lbl.configure(text=f"00:00 / {self._format_time(self.player.get_duration())}")
 
     def _on_volume_changed(self, value):
         self.player.set_volume(float(value))
 
     def _setup_player_timer(self):
-        """Update playback slider and time display periodically when not user scrubbing."""
-        if not self.is_user_scrubbing:
+        """Update playback slider, waveform, and time display periodically when not user scrubbing."""
+        if not self.is_user_scrubbing and not getattr(self.waveform_view, "is_scrubbing", False):
             if self.player.is_playing() or self.player.is_paused():
                 curr = self.player.get_position()
                 total = self.player.get_duration()
                 if total > 0:
-                    self.timeline_slider.set(curr / total)
+                    pct = curr / total
+                    self.timeline_slider.set(pct)
+                    if hasattr(self, "waveform_view"):
+                        self.waveform_view.set_progress(pct)
                 self.time_lbl.configure(text=f"{self._format_time(curr)} / {self._format_time(total)}")
                 
                 if not self.player.is_playing() and not self.player.is_paused():
                     self.play_btn.configure(text="▶ Abspielen")
                     self.timeline_slider.set(0.0)
+                    if hasattr(self, "waveform_view"):
+                        self.waveform_view.set_progress(0.0)
         
         self.after(80, self._setup_player_timer)
 
