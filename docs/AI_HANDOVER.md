@@ -35,18 +35,19 @@ Dieses Dokument richtet sich an nachfolgende **KI-Agenten (Gemini, Claude, GPT, 
 | Modul | Zweck |
 | :--- | :--- |
 | `src/document_parser.py` | Extrahiert Text aus `.txt`, `.md`, `.pdf` (`pypdf`), `.docx` (`python-docx`), `.srt` und splittet Kapitel anhand von Überschriften (`# Kapitel`). |
-| `src/batch_processor.py` | Verwaltet die Warteschlange (`BatchItem`) für Stapelverarbeitung, führt Jobs sequentiell aus und bietet Abbruchunterstützung. |
-| `src/tts_service.py` | Gemini API Client, Tag-Übersetzung (`[lachen]` $\to$ `[laugh]`), Smart Chunking gegen Timeouts, PCM-Stitching & Modell-Fallback. |
+| `src/batch_processor.py` | Verwaltet die Warteschlange (`BatchItem`) für Stapelverarbeitung, unterstützt mehrsprachigen Export und sequentielle Generierung. |
+| `src/translation_service.py` | Nutzt `gemini-3.8-flash` zur Übersetzung in bis zu 32 Zielsprachen bei striktem Erhalt aller eckigen Audio-Tags (`[lachen]`, `[Pause]`, etc.). |
+| `src/tts_service.py` | Gemini API Client, Tag-Übersetzung (`[lachen]` $\to$ `[laugh]`), Smart Chunking gegen Timeouts, PCM-Stitching, Ton-Direktiven (`[Tone: ...]`) & Modell-Fallback. |
 | `src/audio_converter.py` | FFmpeg-Wrapper für AAC-LC Mono 64k FastStart MP4/M4A/MP3 Konvertierung. |
 | `src/player.py` | Pygame Audio Player mit Scrubbing-Unterstützung (`seek`). |
-| `src/gui.py` | CustomTkinter GUI mit Modus-Umschaltung (Einzeltext / Batch), `AutoScrollableFrame` (Auto-Hide Scrollbar) und Echtzeit-Status. |
-| `src/config.py` | Stimmen, Modelle, Presets, Pfade und `.env`-Management (auch im PyInstaller frozen Mode). |
+| `src/gui.py` | CustomTkinter GUI mit Modus-Umschaltung (Einzeltext / Batch), stabiler Zonen-Hierarchie, `AutoScrollableFrame` und Echtzeit-Status. |
+| `src/config.py` | 18 verifizierte Stimmen, 32 Sprachen, Modelle, Presets, Pfade und `.env`-Management (auch im PyInstaller frozen Mode). |
 
 ---
 
 ## 3. Bekannte Fallstricke & API-Besonderheiten
 
-- **Gemini TTS Preview Endpunkte**: `gemini-3.1-flash-tts-preview` und `gemini-2.5-flash-preview-tts` akzeptieren **keine** `systemInstruction` im Payload (wirft sonst API-Fehler). Regieanweisungen werden direkt als Inline-Tags im Text übergeben.
+- **Gemini TTS Preview Endpunkte**: `gemini-3.1-flash-tts-preview` und `gemini-2.5-flash-preview-tts` akzeptieren **keine** `systemInstruction` im Payload (wirft sonst API-Fehler `Developer instruction is not enabled for this model`). Regieanweisungen/Sprechstile werden jedoch nativ verarbeitet, wenn sie als `[Tone: ...]` am Anfang jedes Chunks mitgegeben werden. Das Modell liest diese nicht vor, sondern setzt sie als Sprechstil um!
 - **Timeouts bei langen Texten**: Die Smart-Chunking-Engine in `src/tts_service.py` zerlegt Texte an Satzgrenzen in Blöcke à ~300 Zeichen und konkateniert die resultierenden PCM-Bytes nahtlos.
 - **PyInstaller Bundling**: `build_exe.py` sammelt `--collect-all=customtkinter`, `--collect-all=imageio_ffmpeg`, `--collect-all=pygame`, `--collect-all=pypdf`, `--collect-all=docx` und prüft, ob die Ziel-EXE gerade geöffnet ist, um Sperrfehler zu vermeiden.
 

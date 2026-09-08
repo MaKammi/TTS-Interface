@@ -1,6 +1,7 @@
 """
 Modern, high-contrast GUI for Gemini TTS Studio
 Includes Single-Text Mode with Document Importer and Full Batch / Document Queue Processing.
+Features Global System-Prompt / Tone Directives, 30+ Languages, and Automatic Translation.
 Rock-solid stable layout hierarchy where no elements jump or shift when switching tabs.
 """
 
@@ -18,6 +19,7 @@ from .config import (
     AVAILABLE_VOICES,
     AVAILABLE_MODELS,
     SUPPORTED_LANGUAGES,
+    STYLE_SUGGESTIONS,
     AUDIO_TAGS,
     AUDIO_PRESETS,
     get_api_key,
@@ -30,6 +32,7 @@ from .audio_converter import convert_audio
 from .player import AudioPlayer
 from .document_parser import extract_text_from_file, split_into_chapters
 from .batch_processor import BatchProcessor, BatchItem
+from .translation_service import TranslationService
 
 
 ctk.set_appearance_mode("Dark")
@@ -163,19 +166,21 @@ class GeminiTTSApp(ctk.CTk):
         super().__init__()
 
         self.title("Gemini TTS Studio - Windows Interface")
-        self.geometry("1100x880")
-        self.minsize(850, 550)
+        self.geometry("1120x920")
+        self.minsize(860, 560)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
         self.batch_processor = BatchProcessor()
+        self.translation_service = TranslationService()
         
         self.current_generated_wav: Optional[Path] = None
         self.current_converted_file: Optional[Path] = None
         self.is_generating = False
         self.is_user_scrubbing = False
-        self.is_format_collapsed = True  # Collapsed by default
-        self.current_mode = "single"      # "single" or "batch"
+        self.is_format_collapsed = True   # Collapsed by default
+        self.is_style_collapsed = True    # Collapsed by default
+        self.current_mode = "single"       # "single" or "batch"
         self.batch_output_dir = OUTPUT_DIR / "batch_exports"
 
         self._build_ui()
@@ -275,10 +280,25 @@ class GeminiTTSApp(ctk.CTk):
         )
         text_title.pack(side="left")
 
+        # Translation Button
+        self.translate_single_btn = ctk.CTkButton(
+            text_header_frame,
+            text="🌐 In Zielsprache übersetzen",
+            command=self._translate_single_text,
+            height=30,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=("#0284C7", "#0369A1"),
+            hover_color=("#0369A1", "#0284C7"),
+            text_color="#FFFFFF",
+            border_width=1.5,
+            border_color=("#38BDF8", "#38BDF8")
+        )
+        self.translate_single_btn.pack(side="right", padx=(8, 0))
+
         # Quick Document Loader Button
         load_doc_btn = ctk.CTkButton(
             text_header_frame,
-            text="📂 Dokument laden (.txt, .pdf, .docx, .md)",
+            text="📂 Dokument laden",
             command=self._load_document_to_single_text,
             height=30,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
@@ -288,7 +308,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=("#64748B", "#38BDF8")
         )
-        load_doc_btn.pack(side="right", padx=(10, 0))
+        load_doc_btn.pack(side="right", padx=(8, 0))
 
         self.char_counter_lbl = ctk.CTkLabel(
             text_header_frame,
@@ -296,7 +316,7 @@ class GeminiTTSApp(ctk.CTk):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.char_counter_lbl.pack(side="right")
+        self.char_counter_lbl.pack(side="right", padx=(0, 6))
 
         # Text input area
         self.text_input = ctk.CTkTextbox(
@@ -308,10 +328,24 @@ class GeminiTTSApp(ctk.CTk):
             border_color=("#94A3B8", "#475569"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        self.text_input.pack(fill="x", padx=18, pady=(0, 10))
+        self.text_input.pack(fill="x", padx=18, pady=(0, 6))
         self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
+
+        # Translation check row
+        trans_options_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
+        trans_options_frame.pack(fill="x", padx=18, pady=(0, 8))
+
+        self.auto_translate_var = ctk.BooleanVar(value=False)
+        self.auto_translate_check = ctk.CTkCheckBox(
+            trans_options_frame,
+            text="Text vor Vertonung automatisch in die ausgewählte Zielsprache übersetzen",
+            variable=self.auto_translate_var,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.auto_translate_check.pack(side="left")
 
         # Audio-Tags Toolbar (Responsive 2-Row Grid)
         tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
@@ -419,7 +453,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         clear_btn.pack(side="left")
 
-        # Options Row (Chapter Splitting & Output Directory)
+        # Options Row (Chapter Splitting, Multilingual Export & Output Directory)
         options_frame = ctk.CTkFrame(
             self.batch_card,
             fg_color=("gray95", "#0F172A"),
@@ -438,6 +472,31 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_PRIMARY_TEXT
         )
         split_check.pack(anchor="w", padx=12, pady=(10, 6))
+
+        # Multi-Language Selection Row for Batch
+        multi_lang_row = ctk.CTkFrame(options_frame, fg_color="transparent")
+        multi_lang_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        ctk.CTkLabel(
+            multi_lang_row,
+            text="Mehrsprachiger Export:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left", padx=(0, 10))
+
+        self.batch_lang_vars = {}
+        for l_code, l_label in [("de", "🇩🇪 DE"), ("en", "🇬🇧 EN"), ("es", "🇪🇸 ES"), ("fr", "🇫🇷 FR"), ("it", "🇮🇹 IT")]:
+            var = ctk.BooleanVar(value=(l_code == "de"))
+            self.batch_lang_vars[l_code] = var
+            cb = ctk.CTkCheckBox(
+                multi_lang_row,
+                text=l_label,
+                variable=var,
+                width=65,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                text_color=COLOR_PRIMARY_TEXT
+            )
+            cb.pack(side="left", padx=4)
 
         outdir_row = ctk.CTkFrame(options_frame, fg_color="transparent")
         outdir_row.pack(fill="x", padx=12, pady=(0, 10))
@@ -502,7 +561,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.queue_empty_lbl.pack(pady=20)
 
-        # ------------------ 3. Permanent Voice & Language Card ------------------
+        # ------------------ 3. Permanent Voice, Language & Model Card ------------------
         voice_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -551,7 +610,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.voice_desc_lbl.pack(anchor="w", pady=(5, 0))
 
-        # Language Selector
+        # Language Selector (32 Languages)
         lang_box = ctk.CTkFrame(voice_card, fg_color="transparent")
         lang_box.grid(row=0, column=1, padx=16, pady=14, sticky="nsew")
 
@@ -580,7 +639,7 @@ class GeminiTTSApp(ctk.CTk):
 
         ctk.CTkLabel(
             lang_box,
-            text="Erkennt Sprache automatisch am Textinhalt.",
+            text="32 Sprachen unterstützt (Auto-Detect oder Zielsprache).",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
@@ -619,7 +678,109 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(5, 0))
 
-        # ------------------ 4. Permanent Collapsible Audio Format Card ------------------
+        # ------------------ 4. Permanent Collapsible Style & System-Prompt Card ------------------
+        self.style_card = ctk.CTkFrame(
+            main_content,
+            corner_radius=12,
+            fg_color=COLOR_CARD_BG,
+            border_width=1.5,
+            border_color=COLOR_CARD_BORDER
+        )
+        self.style_card.pack(fill="x", pady=(0, 10))
+
+        # Collapsible Header
+        self.style_header_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
+        self.style_header_frame.pack(fill="x", padx=18, pady=10)
+
+        self.style_title_lbl = ctk.CTkLabel(
+            self.style_header_frame,
+            text="🎭 Regieanweisung & Sprechstil (System-Prompt): Keine (Standard)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.style_title_lbl.pack(side="left")
+
+        self.style_toggle_btn = ctk.CTkButton(
+            self.style_header_frame,
+            text="▾ Stil anpassen",
+            command=self._toggle_style_panel,
+            width=160,
+            height=32,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=("#334155", "#0F172A"),
+            hover_color=("#1E293B", "#1E3A8A"),
+            text_color="#FFFFFF",
+            border_width=1.5,
+            border_color=("#64748B", "#38BDF8")
+        )
+        self.style_toggle_btn.pack(side="right")
+
+        # Collapsible Body Container (hidden by default)
+        self.style_body_frame = ctk.CTkFrame(self.style_card, fg_color="transparent")
+
+        preset_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
+        preset_style_row.pack(fill="x", padx=18, pady=(0, 8))
+
+        ctk.CTkLabel(
+            preset_style_row,
+            text="Stil-Vorlage:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left", padx=(0, 10))
+
+        style_preset_names = [p[0] for p in STYLE_SUGGESTIONS]
+        self.style_preset_var = ctk.StringVar(value=style_preset_names[0])
+        self.style_preset_menu = ctk.CTkOptionMenu(
+            preset_style_row,
+            values=style_preset_names,
+            variable=self.style_preset_var,
+            command=self._on_style_preset_changed,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=COLOR_ACCENT,
+            button_color="#1D4ED8",
+            button_hover_color="#1E3A8A",
+            text_color="#FFFFFF"
+        )
+        self.style_preset_menu.pack(side="left", fill="x", expand=True)
+
+        custom_style_row = ctk.CTkFrame(self.style_body_frame, fg_color="transparent")
+        custom_style_row.pack(fill="x", padx=18, pady=(0, 14))
+
+        ctk.CTkLabel(
+            custom_style_row,
+            text="Eigene Regieanweisung:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(side="left", padx=(0, 10))
+
+        self.style_input = ctk.CTkEntry(
+            custom_style_row,
+            placeholder_text="z. B. calm, warm, documentary narrator style oder Sprich wie ein alter weiser Zauberer",
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            border_width=1.5,
+            border_color=("#94A3B8", "#475569"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.style_input.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.style_input.bind("<KeyRelease>", self._on_style_input_changed)
+
+        clear_style_btn = ctk.CTkButton(
+            custom_style_row,
+            text="Zurücksetzen",
+            command=self._clear_style,
+            width=100,
+            height=34,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#475569",
+            hover_color="#334155",
+            text_color="#FFFFFF"
+        )
+        clear_style_btn.pack(side="right")
+
+        # ------------------ 5. Permanent Collapsible Audio Format Card ------------------
         self.format_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -789,11 +950,11 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.faststart_check.grid(row=1, column=4, padx=8, pady=(0, 8), sticky="w")
 
-        # ------------------ 5. Action Container (Permanent Slot) ------------------
+        # ------------------ 6. Action Container (Permanent Slot) ------------------
         self.action_container = ctk.CTkFrame(main_content, fg_color="transparent")
         self.action_container.pack(fill="x", pady=(0, 0))
 
-        # 5A: Single-Text Action Card
+        # 6A: Single-Text Action Card
         self.single_action_card = ctk.CTkFrame(
             self.action_container,
             corner_radius=12,
@@ -835,7 +996,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.status_lbl.pack(padx=18, pady=(0, 12))
 
-        # 5B: Batch Action Card (Instantiated, packed only in batch mode)
+        # 6B: Batch Action Card (Instantiated, packed only in batch mode)
         self.batch_action_card = ctk.CTkFrame(
             self.action_container,
             corner_radius=12,
@@ -892,7 +1053,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.batch_status_lbl.pack(padx=18, pady=(0, 12))
 
-        # ------------------ 6. Permanent Audio Player & Export Card (Bottom) ------------------
+        # ------------------ 7. Permanent Audio Player & Export Card (Bottom) ------------------
         player_card = ctk.CTkFrame(
             main_content,
             corner_radius=12,
@@ -1025,6 +1186,93 @@ class GeminiTTSApp(ctk.CTk):
             self.single_action_card.pack_forget()
             self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
             self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
+
+    # ------------------ Translation (Single Text) ------------------
+
+    def _translate_single_text(self):
+        """Translates current text in text_input into the selected target language."""
+        text = self.text_input.get("0.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Hinweis", "Bitte gib zuerst einen Text ein, der übersetzt werden soll.")
+            return
+
+        selected_lang_name = self.lang_var.get()
+        target_lang_id = "auto"
+        for l in SUPPORTED_LANGUAGES:
+            if l["name"] == selected_lang_name:
+                target_lang_id = l["id"]
+                break
+
+        if target_lang_id == "auto":
+            messagebox.showinfo("Sprachauswahl", "Bitte wähle im Bereich '🌐 Sprache' eine konkrete Zielsprache aus (z. B. Englisch, Französisch, Spanisch etc.).")
+            return
+
+        self.translate_single_btn.configure(state="disabled", text="⏳ Übersetze...")
+        self.status_lbl.configure(text=f"Übersetze Text nach {selected_lang_name} (Gemini 3.8 Flash)...", text_color="#38BDF8")
+
+        def run_trans():
+            try:
+                translated = self.translation_service.translate_text(text, target_lang_id=target_lang_id)
+                self.after(0, self._on_single_translation_done, translated, selected_lang_name)
+            except Exception as e:
+                self.after(0, self._on_single_translation_error, str(e))
+
+        threading.Thread(target=run_trans, daemon=True).start()
+
+    def _on_single_translation_done(self, translated_text: str, target_lang_name: str):
+        self.translate_single_btn.configure(state="normal", text="🌐 In Zielsprache übersetzen")
+        self.text_input.delete("0.0", "end")
+        self.text_input.insert("0.0", translated_text)
+        self._update_counters()
+        self.status_lbl.configure(text=f"✅ Erfolgreich nach {target_lang_name} übersetzt!", text_color="#10B981")
+        messagebox.showinfo("Übersetzung fertig", f"Der Text wurde erfolgreich nach {target_lang_name} übersetzt!\nAlle Regieanweisungen und Audio-Tags blieben erhalten.")
+
+    def _on_single_translation_error(self, err_msg: str):
+        self.translate_single_btn.configure(state="normal", text="🌐 In Zielsprache übersetzen")
+        self.status_lbl.configure(text=f"❌ Übersetzungsfehler: {err_msg}", text_color="#EF4444")
+        messagebox.showerror("Übersetzungsfehler", f"Fehler bei der Übersetzung:\n{err_msg}")
+
+    # ------------------ System-Prompt & Style Panel ------------------
+
+    def _toggle_style_panel(self):
+        """Toggle collapsible Style / System-Prompt panel."""
+        if self.is_style_collapsed:
+            self.style_body_frame.pack(fill="x", padx=0, pady=(0, 0))
+            self.style_toggle_btn.configure(text="▴ Zuklappen")
+            self.is_style_collapsed = False
+        else:
+            self.style_body_frame.pack_forget()
+            self.style_toggle_btn.configure(text="▾ Stil anpassen")
+            self.is_style_collapsed = True
+
+    def _on_style_preset_changed(self, choice: str):
+        for name, directive in STYLE_SUGGESTIONS:
+            if name == choice:
+                self.style_input.delete(0, "end")
+                if directive:
+                    self.style_input.insert(0, directive)
+                self._update_style_title()
+                break
+
+    def _on_style_input_changed(self, event=None):
+        self._update_style_title()
+
+    def _update_style_title(self):
+        val = self.style_input.get().strip()
+        if not val:
+            self.style_title_lbl.configure(text="🎭 Regieanweisung & Sprechstil (System-Prompt): Keine (Standard)")
+        else:
+            short_val = val[:45] + "..." if len(val) > 45 else val
+            self.style_title_lbl.configure(text=f"🎭 Regieanweisung: {short_val}")
+
+    def _clear_style(self):
+        self.style_preset_var.set(STYLE_SUGGESTIONS[0][0])
+        self.style_input.delete(0, "end")
+        self._update_style_title()
+
+    def _get_current_system_prompt(self) -> Optional[str]:
+        prompt = self.style_input.get().strip()
+        return prompt if prompt else None
 
     # ------------------ Document Importer (Single Text) ------------------
 
@@ -1166,7 +1414,7 @@ class GeminiTTSApp(ctk.CTk):
                 status_color = "#10B981"
             elif "Fehler" in item.status:
                 status_color = "#EF4444"
-            elif "generiert" in item.status or "Konvertiere" in item.status:
+            elif "generiert" in item.status or "Konvertiere" in item.status or "Übersetze" in item.status:
                 status_color = "#38BDF8"
 
             status_lbl = ctk.CTkLabel(
@@ -1245,7 +1493,13 @@ class GeminiTTSApp(ctk.CTk):
                 lang_id = l["id"]
                 break
 
+        # Collect selected languages from multi-lang checkboxes
+        target_langs = [code for code, var in self.batch_lang_vars.items() if var.get()]
+        if not target_langs:
+            target_langs = [lang_id if lang_id != "auto" else "de"]
+
         encoding_settings = self._get_current_encoding_settings()
+        system_prompt = self._get_current_system_prompt()
 
         self.batch_start_btn.configure(state="disabled", text="⏳ Batch-Generierung läuft...")
         self.batch_cancel_btn.configure(state="normal")
@@ -1258,6 +1512,8 @@ class GeminiTTSApp(ctk.CTk):
             model=model_id,
             language=lang_id,
             encoding_settings=encoding_settings,
+            system_prompt=system_prompt,
+            target_languages=target_langs,
             output_directory=self.batch_output_dir,
             on_item_update=lambda item: self.after(0, self._refresh_batch_queue_ui),
             on_batch_update=lambda curr, total, prog: self.after(0, self._on_batch_progress_ui, curr, total, prog),
@@ -1283,7 +1539,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color="#10B981"
         )
         self._refresh_batch_queue_ui()
-        messagebox.showinfo("Batch abgeschlossen", f"Stapelverarbeitung abgeschlossen!\n{success_count} von {len(items)} Audiodateien wurden in '{self.batch_output_dir.name}' gespeichert.")
+        messagebox.showinfo("Batch abgeschlossen", f"Stapelverarbeitung abgeschlossen!\n{success_count} von {len(items)} Dateien wurden erfolgreich verarbeitet und in '{self.batch_output_dir.name}' gespeichert.")
 
     def _batch_cancel(self):
         if self.batch_processor.is_running:
@@ -1318,6 +1574,7 @@ class GeminiTTSApp(ctk.CTk):
 
     def _on_key_saved(self, new_key: str):
         self.tts_service.set_api_key(new_key)
+        self.translation_service.set_api_key(new_key)
         self.key_status_btn.configure(text=self._get_key_status_text())
         messagebox.showinfo("Erfolg", "API-Key wurde erfolgreich gespeichert!")
 
@@ -1435,6 +1692,13 @@ class GeminiTTSApp(ctk.CTk):
                     break
 
             start_time = time.time()
+
+            # Automatic translation if checkbox checked and language is not auto or de
+            if self.auto_translate_var.get() and lang_id not in ("auto", "de"):
+                self._update_generation_progress(0.08, f"Übersetze Text automatisch nach {selected_lang_name}...")
+                text = self.translation_service.translate_text(text, target_lang_id=lang_id)
+
+            system_prompt = self._get_current_system_prompt()
             
             # Generate speech with chunking & progress updates
             raw_wav_path = self.tts_service.generate_speech(
@@ -1442,6 +1706,7 @@ class GeminiTTSApp(ctk.CTk):
                 voice_name=voice_choice,
                 model=model_id,
                 language=lang_id,
+                system_prompt=system_prompt,
                 progress_callback=self._update_generation_progress
             )
             self.current_generated_wav = raw_wav_path

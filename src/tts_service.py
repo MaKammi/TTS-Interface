@@ -199,10 +199,12 @@ class GeminiTTSService:
         voice_name: str = "Puck",
         model: str = "gemini-3.1-flash-tts-preview",
         language: str = "auto",
+        system_prompt: Optional[str] = None,
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> Path:
         """
         Generates audio from text using Gemini TTS with chunking and saves it as a WAV file in TEMP_DIR.
+        Supports optional system_prompt / tone directive (e.g. 'calm, warm, narrator style').
         """
         current_key = self.api_key or get_api_key()
         if not current_key or current_key.strip() == "":
@@ -218,6 +220,11 @@ class GeminiTTSService:
         all_pcm_frames = []
         fallback_model = "gemini-2.5-flash-preview-tts" if model != "gemini-2.5-flash-preview-tts" else "gemini-2.5-pro-preview-tts"
 
+        # Sanitize system_prompt / tone directive
+        clean_tone = ""
+        if system_prompt and system_prompt.strip():
+            clean_tone = system_prompt.replace("[", "").replace("]", "").strip()
+
         for idx, chunk in enumerate(chunks):
             if progress_callback:
                 progress_val = idx / (total_chunks + 0.3)
@@ -226,12 +233,15 @@ class GeminiTTSService:
                     f"Generiere Abschnitt {idx + 1} von {total_chunks}..."
                 )
 
+            # Prepend Tone directive if system_prompt is active
+            chunk_to_send = f"[Tone: {clean_tone}] {chunk}" if clean_tone else chunk
+
             # Try primary model first, fallback if necessary
-            pcm_chunk = self._call_single_model(chunk, voice_name, model, current_key)
+            pcm_chunk = self._call_single_model(chunk_to_send, voice_name, model, current_key)
             
             if pcm_chunk is None:
                 # Try fallback model
-                pcm_chunk = self._call_single_model(chunk, voice_name, fallback_model, current_key)
+                pcm_chunk = self._call_single_model(chunk_to_send, voice_name, fallback_model, current_key)
 
             if pcm_chunk is None:
                 raise RuntimeError(

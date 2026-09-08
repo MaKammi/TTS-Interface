@@ -60,14 +60,53 @@ AVAILABLE_VOICES = [
     {"id": "Ursa", "name": "Ursa", "desc": "Kraftvoll, präsent & selbstbewusst (Weiblich)"},
 ]
 
-# Supported Languages
+# Translation & Instruction Configuration
+TRANSLATION_MODEL = "gemini-3.8-flash"
+
+# Style & Tone Suggestions for System-Prompt
+STYLE_SUGGESTIONS = [
+    ("Keine Regieanweisung (Standard)", ""),
+    ("Ruhig, professionell & sachlich (Dokumentation)", "calm, professional, informative, documentary style"),
+    ("Warm, freundlich & vertrauenswürdig (Erklärvideo)", "warm, friendly, approachable, trustworthy"),
+    ("Lebhaft, enthusiastisch & dynamisch (Social Media / Werbung)", "enthusiastic, energetic, lively, dynamic"),
+    ("Sanft, einfühlsam & entspannend (Hörbuch / Meditation)", "gentle, soothing, soft, storytelling tone"),
+    ("Dramatisch, tief & geheimnisvoll (Krimi / Hörspiel)", "dramatic, deep, mysterious, suspenseful"),
+]
+
+# Supported Languages (32 Welt- und Regionalsprachen)
 SUPPORTED_LANGUAGES = [
     {"id": "auto", "name": "🌐 Automatisch erkennen (Auto-Detect)"},
     {"id": "de", "name": "🇩🇪 Deutsch"},
-    {"id": "en", "name": "🇬🇧 Englisch"},
+    {"id": "en", "name": "🇬🇧 Englisch (UK)"},
+    {"id": "en-us", "name": "🇺🇸 Englisch (US)"},
     {"id": "fr", "name": "🇫🇷 Französisch"},
     {"id": "es", "name": "🇪🇸 Spanisch"},
     {"id": "it", "name": "🇮🇹 Italienisch"},
+    {"id": "pt", "name": "🇵🇹 Portugiesisch"},
+    {"id": "pt-br", "name": "🇧🇷 Portugiesisch (Brasilien)"},
+    {"id": "nl", "name": "🇳🇱 Niederländisch"},
+    {"id": "pl", "name": "🇵🇱 Polnisch"},
+    {"id": "sv", "name": "🇸🇪 Schwedisch"},
+    {"id": "no", "name": "🇳🇴 Norwegisch"},
+    {"id": "da", "name": "🇩🇰 Dänisch"},
+    {"id": "fi", "name": "🇫🇮 Finnisch"},
+    {"id": "tr", "name": "🇹🇷 Türkisch"},
+    {"id": "el", "name": "🇬🇷 Griechisch"},
+    {"id": "cs", "name": "🇨🇿 Tschechisch"},
+    {"id": "ro", "name": "🇷🇴 Rumänisch"},
+    {"id": "hu", "name": "🇭🇺 Ungarisch"},
+    {"id": "uk", "name": "🇺🇦 Ukrainisch"},
+    {"id": "ru", "name": "🇷🇺 Russisch"},
+    {"id": "ja", "name": "🇯🇵 Japanisch"},
+    {"id": "ko", "name": "🇰🇷 Koreanisch"},
+    {"id": "zh", "name": "🇨🇳 Chinesisch (Mandarin)"},
+    {"id": "hi", "name": "🇮🇳 Hindi"},
+    {"id": "ar", "name": "🇸🇦 Arabisch"},
+    {"id": "id", "name": "🇮🇩 Indonesisch"},
+    {"id": "vi", "name": "🇻🇳 Vietnamesisch"},
+    {"id": "th", "name": "🇹🇭 Thailändisch"},
+    {"id": "bg", "name": "🇧🇬 Bulgarisch"},
+    {"id": "hr", "name": "🇭🇷 Kroatisch"},
 ]
 
 # Audio Emotion & Style Tags (Display Name, Tag Text, Tooltip/Description, Category)

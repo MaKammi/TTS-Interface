@@ -62,11 +62,21 @@ graph TD
 - **Audio-Tags / Regieanweisungen**:
   - Inline-Tags (`[laugh]`, `[whisper]`, `[sad]`, `[excited]`, `[pause]`, `[sigh]`, `[slow]`, `[fast]`).
   - Deutsches Tag-Mapping (`TAG_REPLACEMENTS`) übersetzt `[lachen]` etc. automatisch.
+- **Globale Regieanweisungen / System-Prompt (`[Tone: ...]`)**:
+  - Da Google Gemini TTS Endpunkte `systemInstruction` mit 400 ablehnen, injiziert die Engine globale Sprechstilanweisungen automatisch als `[Tone: ...]` Direktive vor jeden Chunk. Dies wird vom Modell tonal umgesetzt, aber nicht vorgelesen.
 - **Smart Chunking Engine**:
   - Teilt Texte an Absatz- und Satzgrenzen in Abschnitte (~300 Zeichen) auf, um Timeouts zu verhindern.
   - Nahtlose Verknüpfung der 16-Bit-PCM-Audioframes im Speicher.
 
-### 2.4 Audio-Konvertierung & FFmpeg (`src/audio_converter.py`)
+### 2.4 Übersetzungs-Engine (`src/translation_service.py`)
+- **Modell**: `gemini-3.8-flash`
+- **Funktionsweise**: Übersetzt Texte blitzschnell in bis zu 32 Zielsprachen.
+- **Tag-Erhalt**: Gewährleistet durch gezieltes Prompt-Engineering, dass alle eckigen Regieanweisungs-Tags (`[lachen]`, `[flüstern]`, `[Pause]`, etc.) an ihrer natürlichen grammatikalischen Position erhalten bleiben.
+- **Modi**:
+  - Einzeltext: Sofortübersetzung im Textfeld (`🌐 In Zielsprache übersetzen`) oder automatische Übersetzung vor Sprachsynthese.
+  - Batch: Mehrsprachiger Export für mehrere ausgewählte Zielsprachen (`_de.mp4`, `_en.mp4`, `_es.mp4`, etc.).
+
+### 2.5 Audio-Konvertierung & FFmpeg (`src/audio_converter.py`)
 - **Zielprofil (Web-Streaming Standard)**:
   ```bash
   ffmpeg -i eingabe.wav -c:a aac -b:a 64k -ac 1 -ar 44100 -movflags +faststart ausgabe.mp4
@@ -76,10 +86,17 @@ graph TD
   - **Bitrate**: `64k` (64 kbit/s).
   - **Container**: MP4 / M4A mit `+faststart`.
 
-### 2.5 Audio-Player & Scrubbing (`src/player.py`)
+### 2.6 Audio-Player & Scrubbing (`src/player.py`)
 - Nutzt `pygame.mixer` für latenzfreie Wiedergabe und interaktives Scrubbing via `seek(target_seconds)`.
 
-### 2.6 Benutzeroberfläche (`src/gui.py`)
+### 2.7 Benutzeroberfläche (`src/gui.py`)
 - Basiert auf **CustomTkinter** mit Dark/Light-Mode.
-- **Modus-Umschaltung**: `[ ✍️ Einzeltext-Modus ]` und `[ 📂 Dokumenten- & Batch-Import ]`.
+- **Feste Zonen-Hierarchie**:
+  1. Modus-Schalter (`[ ✍️ Einzeltext-Modus ]` / `[ 📂 Dokumenten- & Batch-Import ]`).
+  2. Eingabezone (`input_container`): Tauscht sauber an Ort und Stelle zwischen Einzeltext und Batch-Warteschlange.
+  3. Einstellungszone (Fix): `🗣️ Stimme` (18 Stimmen inkl. Erinome), `🌐 Sprache` (32 Sprachen), `🤖 Modell`.
+  4. Regieanweisungs- & System-Prompt-Zone (Einklappbar): Vordefinierte Vorlagen und Freitexteingabe.
+  5. Audioformat-Zone (Einklappbar): Streaming-Profile und manuelle Codec-Parameter.
+  6. Aktionszone (`action_container`): Einzel- oder Batch-Generierungs-Buttons.
+  7. Player-Zone (Fix): Integrierter Player mit Timeline-Scrubbing und Export.
 - **`AutoScrollableFrame`**: Intelligenter Scrollbalken (wird ausgeblendet, wenn alle Elemente ins Fenster passen, und blendet sich bei kleinen Fenstern automatisch ein).

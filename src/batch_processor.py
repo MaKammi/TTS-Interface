@@ -123,6 +123,8 @@ class BatchProcessor:
         model: str,
         language: str,
         encoding_settings: Dict[str, Any],
+        system_prompt: Optional[str] = None,
+        target_languages: Optional[List[str]] = None,
         output_directory: Optional[Path] = None,
         on_item_update: Optional[Callable[[BatchItem], None]] = None,
         on_batch_update: Optional[Callable[[int, int, float], None]] = None,
@@ -130,6 +132,7 @@ class BatchProcessor:
     ):
         """
         Executes TTS synthesis and audio conversion for all pending items in the queue sequentially.
+        Supports system_prompt and multiple target languages with automatic translation.
         """
         if self.is_running:
             return
@@ -141,6 +144,10 @@ class BatchProcessor:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         total_items = len(self.items)
+        langs = target_languages if target_languages and len(target_languages) > 0 else [language]
+
+        from .translation_service import TranslationService
+        translator = TranslationService()
 
         def worker():
             for idx, item in enumerate(self.items):
@@ -153,64 +160,85 @@ class BatchProcessor:
                 if item.status == "Fertig ✅":
                     continue
 
-                item.status = "Wird generiert..."
-                item.progress = 0.05
-                if on_item_update:
-                    on_item_update(item)
+                clean_title = "".join(c for c in item.title if c.isalnum() or c in (" ", "_", "-")).strip()
+                clean_title = clean_title.replace(" ", "_")
+                ext = encoding_settings.get("extension", ".mp4")
 
-                if on_batch_update:
-                    on_batch_update(idx + 1, total_items, idx / max(1, total_items))
-
-                def item_chunk_callback(chunk_prog: float, msg: str):
-                    item.progress = max(0.05, min(0.90, chunk_prog * 0.90))
-                    if on_item_update:
-                        on_item_update(item)
+                last_converted = None
 
                 try:
-                    # 1. Synthesize RAW WAV with chunking
-                    raw_wav = tts_service.generate_speech(
-                        text=item.text,
-                        voice_name=voice_name,
-                        model=model,
-                        language=language,
-                        progress_callback=item_chunk_callback
-                    )
+                    for lang_code in langs:
+                        if self.cancel_requested:
+                            break
 
-                    if self.cancel_requested:
-                        item.status = "Abgebrochen ⏹"
+                        # Text to synthesize: translate if target language is specified and not auto/de
+                        text_to_speak = item.text
+                        lang_suffix = f"_{lang_code}" if len(langs) > 1 else ""
+
+                        if lang_code != "auto" and lang_code != "de":
+                            item.status = f"Übersetze nach {lang_code.upper()}..."
+                            if on_item_update:
+                                on_item_update(item)
+                            try:
+                                text_to_speak = translator.translate_text(item.text, target_lang_id=lang_code)
+                            except Exception as trans_err:
+                                print(f"Translation warning: {trans_err}")
+
+                        item.status = f"Generiere Audio ({lang_code.upper()})..."
+                        item.progress = 0.10
                         if on_item_update:
                             on_item_update(item)
-                        break
 
-                    # 2. Convert Audio to target profile
-                    item.status = "Konvertiere Audio..."
-                    if on_item_update:
-                        on_item_update(item)
+                        if on_batch_update:
+                            on_batch_update(idx + 1, total_items, idx / max(1, total_items))
 
-                    ext = encoding_settings.get("extension", ".mp4")
-                    clean_title = "".join(c for c in item.title if c.isalnum() or c in (" ", "_", "-")).strip()
-                    clean_title = clean_title.replace(" ", "_")
-                    
-                    target_file = out_dir / f"{clean_title}{ext}"
-                    # Handle duplicate filenames
-                    dup_idx = 1
-                    while target_file.exists():
-                        target_file = out_dir / f"{clean_title}_{dup_idx}{ext}"
-                        dup_idx += 1
+                        def item_chunk_callback(chunk_prog: float, msg: str):
+                            item.progress = max(0.10, min(0.90, chunk_prog * 0.90))
+                            if on_item_update:
+                                on_item_update(item)
 
-                    converted = convert_audio(
-                        input_file=raw_wav,
-                        output_file=target_file,
-                        codec=encoding_settings.get("codec", "aac"),
-                        channels=encoding_settings.get("channels", 1),
-                        sample_rate=encoding_settings.get("sample_rate", 44100),
-                        bitrate=encoding_settings.get("bitrate", "64k"),
-                        faststart=encoding_settings.get("faststart", True)
-                    )
+                        # 1. Synthesize RAW WAV with chunking
+                        raw_wav = tts_service.generate_speech(
+                            text=text_to_speak,
+                            voice_name=voice_name,
+                            model=model,
+                            language=lang_code,
+                            system_prompt=system_prompt,
+                            progress_callback=item_chunk_callback
+                        )
 
-                    item.output_audio = converted
-                    item.status = "Fertig ✅"
-                    item.progress = 1.0
+                        if self.cancel_requested:
+                            item.status = "Abgebrochen ⏹"
+                            if on_item_update:
+                                on_item_update(item)
+                            break
+
+                        # 2. Convert Audio to target profile
+                        item.status = f"Konvertiere ({lang_code.upper()})..."
+                        if on_item_update:
+                            on_item_update(item)
+
+                        target_file = out_dir / f"{clean_title}{lang_suffix}{ext}"
+                        dup_idx = 1
+                        while target_file.exists():
+                            target_file = out_dir / f"{clean_title}{lang_suffix}_{dup_idx}{ext}"
+                            dup_idx += 1
+
+                        converted = convert_audio(
+                            input_file=raw_wav,
+                            output_file=target_file,
+                            codec=encoding_settings.get("codec", "aac"),
+                            channels=encoding_settings.get("channels", 1),
+                            sample_rate=encoding_settings.get("sample_rate", 44100),
+                            bitrate=encoding_settings.get("bitrate", "64k"),
+                            faststart=encoding_settings.get("faststart", True)
+                        )
+                        last_converted = converted
+
+                    if not self.cancel_requested:
+                        item.output_audio = last_converted
+                        item.status = "Fertig ✅"
+                        item.progress = 1.0
 
                 except Exception as e:
                     item.status = "Fehler ❌"
