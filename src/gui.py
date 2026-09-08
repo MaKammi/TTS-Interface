@@ -430,6 +430,7 @@ class GeminiTTSApp(ctk.CTk):
         self.is_format_collapsed = True   # Collapsed by default
         self.is_style_collapsed = False   # Open by default as requested
         self.is_tags_collapsed = True     # Tags under main text field collapsed by default
+        self.is_batch_lang_collapsed = True # Collapsed by default
         self.current_mode = "single"       # "single" or "batch"
         self.batch_output_dir = OUTPUT_DIR / "batch_exports"
 
@@ -751,32 +752,112 @@ class GeminiTTSApp(ctk.CTk):
         )
         split_check.pack(anchor="w", padx=14, pady=(12, 8))
 
-        # Multi-Language Selection Row for Batch
-        multi_lang_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        multi_lang_row.pack(fill="x", padx=14, pady=(0, 10))
+        # Multi-Language Collapsible Section for Batch
+        self.batch_lang_section = ctk.CTkFrame(options_frame, fg_color="transparent")
+        self.batch_lang_section.pack(fill="x", padx=14, pady=(0, 10))
+
+        # Always-visible Header Row
+        lang_header_row = ctk.CTkFrame(self.batch_lang_section, fg_color="transparent")
+        lang_header_row.pack(fill="x", pady=(0, 4))
 
         ctk.CTkLabel(
-            multi_lang_row,
-            text="Mehrsprachiger Export:",
+            lang_header_row,
+            text="🌐 Mehrsprachiger Export (Zielsprachen):",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 8))
+
+        self.batch_lang_summary_lbl = ctk.CTkLabel(
+            lang_header_row,
+            text="1 Sprache: 🇩🇪 Deutsch",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=M3_PRIMARY
+        )
+        self.batch_lang_summary_lbl.pack(side="left", padx=(0, 10))
+
+        self.batch_lang_toggle_btn = ctk.CTkButton(
+            lang_header_row,
+            text="▾ 31 Sprachen anpassen",
+            command=self._toggle_batch_lang_panel,
+            height=28,
+            width=180,
+            corner_radius=14,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
+            border_width=1.5,
+            border_color=M3_OUTLINE
+        )
+        self.batch_lang_toggle_btn.pack(side="right")
+
+        # Collapsible Body Frame (Hidden by default)
+        self.batch_lang_body_frame = ctk.CTkFrame(
+            self.batch_lang_section,
+            fg_color=M3_SURFACE,
+            corner_radius=12,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
+        )
+
+        # Quick Actions Bar inside collapsible body
+        quick_bar = ctk.CTkFrame(self.batch_lang_body_frame, fg_color="transparent")
+        quick_bar.pack(fill="x", padx=12, pady=(10, 8))
+
+        ctk.CTkLabel(
+            quick_bar,
+            text="Schnellauswahl:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        ).pack(side="left", padx=(0, 8))
+
+        for q_label, q_type in [
+            ("🇩🇪 Nur Deutsch", "de_only"),
+            ("🌍 Top 5 (DE, EN, ES, FR, IT)", "top5"),
+            ("🌐 Alle 31 Sprachen", "all"),
+            ("✕ Alle abwählen", "none")
+        ]:
+            q_btn = ctk.CTkButton(
+                quick_bar,
+                text=q_label,
+                command=lambda t=q_type: self._set_batch_langs_preset(t),
+                height=26,
+                corner_radius=13,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                fg_color=M3_SURFACE_CONTAINER,
+                hover_color=M3_PRIMARY_CONTAINER,
+                text_color=COLOR_PRIMARY_TEXT,
+                border_width=1,
+                border_color=M3_OUTLINE_VARIANT
+            )
+            q_btn.pack(side="left", padx=3)
+
+        # Checkbox Grid for all 31 supported languages
+        grid_frame = ctk.CTkFrame(self.batch_lang_body_frame, fg_color="transparent")
+        grid_frame.pack(fill="x", padx=12, pady=(0, 12))
+        grid_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
         self.batch_lang_vars = {}
-        for l_code, l_label in [("de", "🇩🇪 DE"), ("en", "🇬🇧 EN"), ("es", "🇪🇸 ES"), ("fr", "🇫🇷 FR"), ("it", "🇮🇹 IT")]:
+        batch_langs = [l for l in SUPPORTED_LANGUAGES if l["id"] != "auto"]
+
+        for i, lang in enumerate(batch_langs):
+            col = i % 4
+            row = i // 4
+            l_code = lang["id"]
             var = ctk.BooleanVar(value=(l_code == "de"))
             self.batch_lang_vars[l_code] = var
+
             cb = ctk.CTkCheckBox(
-                multi_lang_row,
-                text=l_label,
+                grid_frame,
+                text=lang["name"],
                 variable=var,
-                width=65,
+                command=self._update_batch_lang_summary,
                 font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
                 text_color=COLOR_PRIMARY_TEXT,
                 fg_color=M3_PRIMARY[0],
                 hover_color=M3_PRIMARY_HOVER[0]
             )
-            cb.pack(side="left", padx=4)
+            cb.grid(row=row, column=col, sticky="w", padx=6, pady=4)
 
         outdir_row = ctk.CTkFrame(options_frame, fg_color="transparent")
         outdir_row.pack(fill="x", padx=14, pady=(0, 12))
@@ -1604,6 +1685,57 @@ class GeminiTTSApp(ctk.CTk):
             self.tag_buttons_frame.pack_forget()
             self.tag_toggle_btn.configure(text="▾ Audio-Tags anzeigen")
             self.is_tags_collapsed = True
+
+    # ------------------ Collapsible Batch Multi-Language Panel ------------------
+
+    def _toggle_batch_lang_panel(self):
+        """Toggle collapsible multi-language target selection panel in batch mode."""
+        if self.is_batch_lang_collapsed:
+            self.batch_lang_body_frame.pack(fill="x", pady=(6, 0))
+            self.batch_lang_toggle_btn.configure(text="▴ Zuklappen")
+            self.is_batch_lang_collapsed = False
+        else:
+            self.batch_lang_body_frame.pack_forget()
+            self.batch_lang_toggle_btn.configure(text="▾ 31 Sprachen anpassen")
+            self.is_batch_lang_collapsed = True
+
+    def _set_batch_langs_preset(self, preset_type: str):
+        top5 = {"de", "en", "es", "fr", "it"}
+        for code, var in self.batch_lang_vars.items():
+            if preset_type == "de_only":
+                var.set(code == "de")
+            elif preset_type == "top5":
+                var.set(code in top5)
+            elif preset_type == "all":
+                var.set(True)
+            elif preset_type == "none":
+                var.set(False)
+        self._update_batch_lang_summary()
+
+    def _update_batch_lang_summary(self):
+        selected_codes = [code for code, var in self.batch_lang_vars.items() if var.get()]
+        count = len(selected_codes)
+        if count == 0:
+            txt = "Keine Zielsprache gewählt (Originalsprache)"
+            color = COLOR_MUTED_TEXT
+        elif count == 1:
+            name = next((l["name"] for l in SUPPORTED_LANGUAGES if l["id"] == selected_codes[0]), selected_codes[0])
+            txt = f"1 Sprache: {name}"
+            color = M3_PRIMARY
+        elif count <= 4:
+            items = []
+            for c in selected_codes:
+                n = next((l["name"] for l in SUPPORTED_LANGUAGES if l["id"] == c), c)
+                flag = n.split(" ")[0]
+                items.append(f"{flag} {c.upper()}")
+            txt = f"{count} Sprachen: {', '.join(items)}"
+            color = M3_PRIMARY
+        else:
+            txt = f"{count} von 31 Sprachen aktiv"
+            color = M3_PRIMARY
+
+        if hasattr(self, "batch_lang_summary_lbl"):
+            self.batch_lang_summary_lbl.configure(text=txt, text_color=color)
 
     # ------------------ Translation (Single Text) ------------------
 
