@@ -2543,6 +2543,9 @@ class AutoScrollableFrame(ctk.CTkScrollableFrame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._parent_canvas.configure(yscrollcommand=self._auto_handle_scroll)
+        # Initially hide scrollbar; will appear only if content overflows
+        self._scrollbar.grid_remove()
+        self.bind("<Configure>", self._check_scroll_on_configure, add=True)
 
     def _auto_handle_scroll(self, first: str, last: str):
         self._scrollbar.set(first, last)
@@ -2555,6 +2558,23 @@ class AutoScrollableFrame(ctk.CTkScrollableFrame):
             else:
                 if not self._scrollbar.winfo_ismapped():
                     self._scrollbar.grid()
+        except Exception:
+            pass
+
+    def _check_scroll_on_configure(self, event=None):
+        try:
+            scrollregion = self._parent_canvas.cget("scrollregion")
+            if scrollregion:
+                parts = [float(p) for p in scrollregion.split()]
+                if len(parts) == 4:
+                    content_height = parts[3] - parts[1]
+                    canvas_height = self._parent_canvas.winfo_height()
+                    if content_height <= canvas_height + 2:
+                        if self._scrollbar.winfo_ismapped():
+                            self._scrollbar.grid_remove()
+                    else:
+                        if not self._scrollbar.winfo_ismapped():
+                            self._scrollbar.grid()
         except Exception:
             pass
 
@@ -2747,13 +2767,13 @@ class GeminiTTSApp(ctk.CTk):
 
         # ------------------ 1. Mode Selector (Permanent Top) ------------------
         mode_frame = ctk.CTkFrame(main_content, fg_color="transparent")
-        mode_frame.pack(fill="x", pady=(0, 12))
+        mode_frame.pack(fill="x", pady=(0, 8))
 
         self.mode_segmented = MaterialSegmentedControl(
             mode_frame,
             values=["✍️ Einzeltext-Modus", "📂 Dokumenten- & Batch-Import"],
             command=self._on_mode_switched,
-            height=46
+            height=40
         )
         self.mode_segmented.pack(fill="x")
 
@@ -2769,10 +2789,10 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=M3_OUTLINE_VARIANT
         )
-        self.single_text_card.pack(fill="x", pady=(0, 12))
+        self.single_text_card.pack(fill="x", pady=(0, 8))
 
         text_header_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        text_header_frame.pack(fill="x", padx=20, pady=(16, 8))
+        text_header_frame.pack(fill="x", padx=20, pady=(12, 6))
 
         text_title = ctk.CTkLabel(
             text_header_frame,
@@ -2875,10 +2895,10 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.more_tags_menu.pack(side="left", padx=3)
 
-        # Main text input area (Compact height 165px so everything fits on screen without scrollbar)
+        # Main text input area (Compact height 145px so everything fits comfortably on screen without scrollbar)
         self.text_input = ctk.CTkTextbox(
             self.single_text_card,
-            height=165,
+            height=145,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             wrap="word",
             corner_radius=14,
@@ -2894,7 +2914,7 @@ class GeminiTTSApp(ctk.CTk):
 
         # Integrated Action Footer Bar (Directly inside script card)
         script_footer = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        script_footer.pack(fill="x", padx=20, pady=(2, 10))
+        script_footer.pack(fill="x", padx=20, pady=(2, 8))
 
         # Left: Translation checkbox
         self.auto_translate_var = ctk.BooleanVar(value=False)
@@ -3211,32 +3231,20 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.queue_empty_lbl.pack(pady=20)
 
-        # ------------------ Action Container (Permanent Slot) ------------------
-        self.action_container = ctk.CTkFrame(main_content, fg_color="transparent")
-        self.action_container.pack(fill="x", pady=(0, 0))
-
-        # 6A: Single action controls are integrated directly into single_text_card footer
-        self.single_action_card = ctk.CTkFrame(self, width=0, height=0)
-
-        # 6B: Batch Action Card (Instantiated, packed only in batch mode)
-        self.batch_action_card = ctk.CTkFrame(
-            self.action_container,
-            corner_radius=20,
-            fg_color=M3_SURFACE,
-            border_width=1.5,
-            border_color=M3_OUTLINE_VARIANT
-        )
+        # Batch Action Footer (Directly inside batch_card)
+        self.batch_action_card = ctk.CTkFrame(self.batch_card, fg_color="transparent")
+        self.batch_action_card.pack(fill="x", padx=20, pady=(0, 14))
 
         batch_action_btn_row = ctk.CTkFrame(self.batch_action_card, fg_color="transparent")
-        batch_action_btn_row.pack(fill="x", padx=20, pady=(16, 10))
+        batch_action_btn_row.pack(fill="x", pady=(0, 8))
 
         self.batch_start_btn = ctk.CTkButton(
             batch_action_btn_row,
             text="⚡ Alle Dateien in Warteschlange generieren",
             command=self._batch_start_processing,
-            height=50,
-            corner_radius=20,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            height=44,
+            corner_radius=22,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
             fg_color=M3_CTA,
             hover_color=M3_CTA_HOVER,
             text_color="#FFFFFF"
@@ -3247,10 +3255,10 @@ class GeminiTTSApp(ctk.CTk):
             batch_action_btn_row,
             text="⏹ Abbrechen",
             command=self._batch_cancel,
-            height=50,
+            height=44,
             width=120,
-            corner_radius=20,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            corner_radius=22,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             fg_color="transparent",
             hover_color=M3_ERROR_HOVER,
             text_color=M3_ERROR,
@@ -3262,22 +3270,26 @@ class GeminiTTSApp(ctk.CTk):
 
         self.batch_progress_bar = ctk.CTkProgressBar(
             self.batch_action_card,
-            height=10,
-            corner_radius=5,
+            height=8,
+            corner_radius=4,
             progress_color=M3_PRIMARY[0],
             fg_color=M3_SURFACE_CONTAINER
         )
-        self.batch_progress_bar.pack(fill="x", padx=20, pady=(0, 10))
+        self.batch_progress_bar.pack(fill="x", pady=(0, 8))
         self.batch_progress_bar.set(0.0)
         self.batch_progress_bar.pack_forget()
 
         self.batch_status_lbl = ctk.CTkLabel(
             self.batch_action_card,
             text="Warteschlange bereit.",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_MUTED_TEXT
         )
-        self.batch_status_lbl.pack(padx=20, pady=(0, 14))
+        self.batch_status_lbl.pack(padx=20, pady=(0, 4))
+
+        # Dummy references for compatibility
+        self.action_container = ctk.CTkFrame(self, width=0, height=0)
+        self.single_action_card = ctk.CTkFrame(self, width=0, height=0)
 
         # ------------------ 7. Permanent Audio Player & Export Card (Bottom) ------------------
         player_card = ctk.CTkFrame(
@@ -3287,10 +3299,10 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=M3_OUTLINE_VARIANT
         )
-        player_card.pack(fill="x", pady=(0, 6))
+        player_card.pack(fill="x", pady=(0, 4))
 
         player_header_row = ctk.CTkFrame(player_card, fg_color="transparent")
-        player_header_row.pack(fill="x", padx=18, pady=(8, 4))
+        player_header_row.pack(fill="x", padx=18, pady=(6, 2))
 
         player_header = ctk.CTkLabel(
             player_header_row,
@@ -3300,7 +3312,7 @@ class GeminiTTSApp(ctk.CTk):
         )
         player_header.pack(side="left")
 
-        # Row 1: Visual Audio Waveform Canvas Display (Slim 38px)
+        # Row 1: Visual Audio Waveform Canvas Display (Slim 32px)
         waveform_container = ctk.CTkFrame(
             player_card,
             fg_color=M3_SURFACE_CONTAINER,
@@ -3308,19 +3320,19 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1,
             border_color=M3_OUTLINE_VARIANT
         )
-        waveform_container.pack(fill="x", padx=18, pady=(0, 6))
+        waveform_container.pack(fill="x", padx=18, pady=(0, 4))
         waveform_container.grid_columnconfigure(0, weight=1)
 
         self.waveform_view = WaveformCanvas(
             waveform_container,
             on_seek_callback=self._on_waveform_seek,
-            height=38
+            height=32
         )
-        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=4, pady=3)
 
         # Row 2: Unified Controls Row (All playback controls + Export in 1 line!)
         controls_frame = ctk.CTkFrame(player_card, fg_color="transparent")
-        controls_frame.pack(fill="x", padx=18, pady=(0, 10))
+        controls_frame.pack(fill="x", padx=18, pady=(0, 8))
         controls_frame.grid_columnconfigure(2, weight=1)
 
         self.play_btn = ctk.CTkButton(
@@ -3423,6 +3435,9 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.export_btn.grid(row=0, column=5, padx=(4, 0))
 
+        # Enforce initial mode layout (Single text mode active, batch hidden)
+        self._on_mode_switched("✍️ Einzeltext-Modus")
+
     # ------------------ Settings Dialog & Header Status Pills ------------------
 
     def _open_settings_dialog(self, initial_tab: str = "voice"):
@@ -3466,13 +3481,11 @@ class GeminiTTSApp(ctk.CTk):
         if "Einzeltext" in mode_value:
             self.current_mode = "single"
             self.batch_card.pack_forget()
-            self.batch_action_card.pack_forget()
             self.single_text_card.pack(fill="x", in_=self.input_container, pady=(0, 8))
         else:
             self.current_mode = "batch"
             self.single_text_card.pack_forget()
             self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 8))
-            self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 8))
 
     def _on_more_tag_selected(self, val: str):
         """Inserts selected tag from the '+ Mehr Tags ▾' dropdown into script."""
