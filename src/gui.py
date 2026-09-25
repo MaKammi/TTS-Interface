@@ -47,7 +47,7 @@ from .player import AudioPlayer
 from .document_parser import extract_text_from_file, split_into_chapters
 from .batch_processor import BatchProcessor, BatchItem
 from .translation_service import TranslationService
-from .updater import UpdateService
+from .updater import UpdateService, format_release_notes
 
 
 ctk.set_appearance_mode("Light")
@@ -496,7 +496,8 @@ class UpdateDialog(ctk.CTkToplevel):
             text_color=COLOR_PRIMARY_TEXT
         )
         notes_box.pack(fill="x", padx=20, pady=(0, 10))
-        notes_content = update_info.get("release_notes") or update_info.get("release_name") or "Keine Versionshinweise hinterlegt."
+        raw_notes = update_info.get("release_notes") or update_info.get("release_name") or ""
+        notes_content = format_release_notes(raw_notes)
         notes_box.insert("0.0", notes_content)
         notes_box.configure(state="disabled")
 

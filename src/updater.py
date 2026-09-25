@@ -38,6 +38,48 @@ def is_newer_version(remote_version: str, local_version: str) -> bool:
     return remote_tuple > local_tuple
 
 
+def format_release_notes(raw_notes: str) -> str:
+    """Format GitHub release markdown into clean, beautiful human-readable text."""
+    if not raw_notes:
+        return "Keine Versionshinweise hinterlegt."
+
+    lines = raw_notes.replace("\r\n", "\n").split("\n")
+    cleaned_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append("")
+            continue
+
+        # Headings
+        if stripped.startswith("### "):
+            cleaned_lines.append(f"📌  {stripped[4:].strip()}\n")
+            continue
+        elif stripped.startswith("## "):
+            cleaned_lines.append(f"📢  {stripped[3:].strip()}\n")
+            continue
+        elif stripped.startswith("# "):
+            cleaned_lines.append(f"🚀  {stripped[2:].strip()}\n")
+            continue
+
+        # List items (- or *)
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            content = stripped[2:].strip()
+            # Clean bold **text** -> text
+            content = re.sub(r"\*\*(.*?)\*\*", r"\1", content)
+            content = re.sub(r"`(.*?)`", r"\1", content)
+            cleaned_lines.append(f"   •  {content}")
+            continue
+
+        clean_line = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
+        clean_line = re.sub(r"`(.*?)`", r"\1", clean_line)
+        cleaned_lines.append(clean_line)
+
+    res = "\n".join(cleaned_lines)
+    res = re.sub(r"\n{3,}", "\n\n", res)
+    return res.strip()
+
+
 class UpdateService:
     """Handles GitHub release querying, downloading, and restarting."""
 
@@ -192,6 +234,7 @@ class UpdateService:
         Replace running executable and restart.
         On Windows, a running exe is locked. We spawn a detached batch script
         that waits for this process PID to terminate, overwrites the EXE, and restarts it.
+        Clears PyInstaller internal environment variables to prevent 'Security validation failure'.
         """
         is_frozen = getattr(sys, "frozen", False)
         
@@ -229,7 +272,15 @@ if errorlevel 1 (
 
 del /f /q %NEW_EXE% >nul
 
+:: Clear all PyInstaller bootloader environment variables!
+:: Otherwise child process fails security validation check
+for /f "tokens=1 delims==" %%v in ('set _PYI 2^>nul') do set %%v=
+for /f "tokens=1 delims==" %%v in ('set _MEI 2^>nul') do set %%v=
+set _PYI_PARENT_PROCESS_LEVEL=
+set _MEIPASS2=
+
 echo [Gemini TTS Studio] Starte neue Version...
+cd /d "{current_exe.parent.resolve()}"
 start "" %TARGET_EXE%
 
 (goto) 2>nul & del "%~f0"
@@ -237,7 +288,9 @@ start "" %TARGET_EXE%
         with open(updater_bat, "w", encoding="utf-8") as f:
             f.write(bat_content)
 
-        # Launch detached updater script
+        # Launch detached updater script with sanitized environment
+        clean_env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI") and not k.startswith("_MEI")}
+
         creation_flags = 0
         if sys.platform == "win32":
             creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
@@ -245,6 +298,7 @@ start "" %TARGET_EXE%
         subprocess.Popen(
             ["cmd.exe", "/c", str(updater_bat.resolve())],
             creationflags=creation_flags,
+            env=clean_env,
             close_fds=True
         )
 
