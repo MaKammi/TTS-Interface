@@ -56,38 +56,66 @@ load_dotenv(ENV_FILE)
 if not os.getenv("GEMINI_API_KEY") and (Path.cwd() / ".env").exists():
     load_dotenv(Path.cwd() / ".env")
 
+# Application & Update Configuration
+APP_VERSION = "2.0.0"
+GITHUB_REPO = "MaKammi/TTS-Interface"
+
 # API Configuration
 DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEFAULT_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview")
+DEFAULT_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
 
 # Available Gemini Models for TTS
 AVAILABLE_MODELS = [
-    {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Standard & Neueste Version)"},
+    {"id": "gemini-3.8-flash-tts", "name": "Gemini 3.8 Flash TTS (Studio-Qualität & Neueste Version)"},
+    {"id": "gemini-3.8-flash-lite-tts", "name": "Gemini 3.8 Flash Lite TTS (High-Speed & Massenverarbeitung)"},
+    {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS (Bewährte Version)"},
     {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash TTS"},
     {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro TTS (Studio-Qualität)"},
-    {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash (Schnell & Zuverlässig)"},
 ]
 
-# Available Gemini Prebuilt Voices (Alle verfügbaren Stimmen inkl. Erinome)
+# Available Gemini Prebuilt Voices (Kuratierte Auswahl aus 50+ Stimmen inkl. nativer deutscher Rollen)
 AVAILABLE_VOICES = [
-    {"id": "Erinome", "name": "Erinome", "desc": "Natürlich, sympathisch & klar (Weiblich)"},
-    {"id": "Puck", "name": "Puck", "desc": "Freundlich & gesprächig (Neutral/Männlich)"},
-    {"id": "Charon", "name": "Charon", "desc": "Tief, autoritär & informativ (Männlich)"},
-    {"id": "Kore", "name": "Kore", "desc": "Ruhig, klar & besonnen (Weiblich)"},
-    {"id": "Fenrir", "name": "Fenrir", "desc": "Kraftvoll, dynamisch & markant (Männlich)"},
-    {"id": "Aoede", "name": "Aoede", "desc": "Melodisch, warm & lebendig (Weiblich)"},
-    {"id": "Leda", "name": "Leda", "desc": "Sanft, melodisch & professionell (Weiblich)"},
-    {"id": "Orus", "name": "Orus", "desc": "Warm, vertrauenswürdig & resonant (Männlich)"},
-    {"id": "Zephyr", "name": "Zephyr", "desc": "Leicht, modern & präzise (Neutral/Weiblich)"},
-    {"id": "Callirrhoe", "name": "Callirrhoe", "desc": "Sanft, getragen & einfühlsam (Weiblich)"},
-    {"id": "Despina", "name": "Despina", "desc": "Lebhaft, enthusiastisch & freundlich (Weiblich)"},
-    {"id": "Iapetus", "name": "Iapetus", "desc": "Tief, sonor & erzählerisch (Männlich)"},
-    {"id": "Algieba", "name": "Algieba", "desc": "Hell, dynamisch & ausdrucksstark (Weiblich)"},
-    {"id": "Algenib", "name": "Algenib", "desc": "Klar, artikuliert & souverän (Männlich)"},
-    {"id": "Lyra", "name": "Lyra", "desc": "Melodisch, harmonisch & warm (Weiblich)"},
-    {"id": "Sadaltager", "name": "Sadaltager", "desc": "Resonant, ruhig & ausgewogen (Männlich)"},
-    {"id": "Sadachbia", "name": "Sadachbia", "desc": "Ausdrucksstark, warm & präsent (Weiblich)"},
-    {"id": "Ursa", "name": "Ursa", "desc": "Kraftvoll, präsent & selbstbewusst (Weiblich)"},
+    # Top-Klassiker & Allrounder
+    {"id": "Erinome", "name": "Erinome", "desc": "Natürlich, sympathisch & klar (Weiblich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Puck", "name": "Puck", "desc": "Freundlich, gesprächig & lebendig (Männlich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Charon", "name": "Charon", "desc": "Tief, autoritär & informativ (Männlich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Kore", "name": "Kore", "desc": "Ruhig, klar & besonnen (Weiblich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Fenrir", "name": "Fenrir", "desc": "Kraftvoll, dynamisch & markant (Männlich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Aoede", "name": "Aoede", "desc": "Melodisch, warm & lebendig (Weiblich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Leda", "name": "Leda", "desc": "Sanft, melodisch & professionell (Weiblich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Orus", "name": "Orus", "desc": "Warm, vertrauenswürdig & resonant (Männlich)", "category": "⭐ Favoriten & Allrounder"},
+    {"id": "Zephyr", "name": "Zephyr", "desc": "Leicht, modern & präzise (Weiblich/Neutral)", "category": "⭐ Favoriten & Allrounder"},
+
+    # Deutsche Rollen-Personas (Google Native DE)
+    {"id": "Authoritative Advisor 1", "name": "Authoritative Advisor 1", "desc": "Anwältin / Sachlich, klar & objektiv (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Authoritative Advisor 2", "name": "Authoritative Advisor 2", "desc": "Anwalt / Souverän, natürlich & fundiert (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Authoritative Advisor 10", "name": "Authoritative Advisor 10", "desc": "Arzt / Freundlich, ruhig & vertrauensvoll (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Authoritative Advisor 4", "name": "Authoritative Advisor 4", "desc": "Ärztin / Klar, besonnen & helfend (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Authoritative Advisor 11", "name": "Authoritative Advisor 11", "desc": "Wissenschaftler / Nachdenklich & beruhigend (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Authoritative Advisor 5", "name": "Authoritative Advisor 5", "desc": "Finanzberaterin / Strukturiert & kompetent (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Tutor 1", "name": "Tutor 1", "desc": "Professorin / Akademisch, didaktisch & präzise (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Tutor 2", "name": "Tutor 2", "desc": "Lehrer / Geduldig, anschaulich & freundlich (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Tutor 3", "name": "Tutor 3", "desc": "Motivationstrainerin / Dynamisch, aktivierend (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Training Voiceover 1", "name": "Training Voiceover 1", "desc": "Moderatorin / Freundlich, einladend, Video-Host (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Training Voiceover 12", "name": "Training Voiceover 12", "desc": "Schulungsleiter / Klar, instruktiv & geduldig (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Digital Assistant 5", "name": "Digital Assistant 5", "desc": "Erzählerin / Warm, nahbar & einfühlsam (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Call Center Agent 10", "name": "Call Center Agent 10", "desc": "Kundenservice / Hilfsbereit & zuvorkommend (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Commercial Voiceover 2", "name": "Commercial Voiceover 2", "desc": "Werbung & Medien / Ausdrucksstark & modern (Weiblich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+    {"id": "Commercial Voiceover 3", "name": "Commercial Voiceover 3", "desc": "Werbung & Medien / Frisch, dynamisch & werblich (Männlich)", "category": "🇩🇪 Deutsche Stimmen & Rollen"},
+
+    # Erweiterte Hörbuch- & Storyteller-Stimmen
+    {"id": "Achernar", "name": "Achernar", "desc": "Sanft, leise & meditativ (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Achird", "name": "Achird", "desc": "Warm, nahbar & natürlich (Männlich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Algenib", "name": "Algenib", "desc": "Sonor, geerdet & markant (Männlich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Algieba", "name": "Algieba", "desc": "Hell, dynamisch & ausdrucksstark (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Alnilam", "name": "Alnilam", "desc": "Ruhig, getragen & sonor (Männlich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Callirrhoe", "name": "Callirrhoe", "desc": "Sanft, getragen & einfühlsam (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Despina", "name": "Despina", "desc": "Lebhaft, enthusiastisch & freundlich (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Iapetus", "name": "Iapetus", "desc": "Tief, sonor & erzählerisch (Männlich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Lyra", "name": "Lyra", "desc": "Melodisch, harmonisch & warm (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Sadaltager", "name": "Sadaltager", "desc": "Resonant, ruhig & ausgewogen (Männlich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Sadachbia", "name": "Sadachbia", "desc": "Ausdrucksstark, warm & präsent (Weiblich)", "category": "📖 Erzähler & Storytelling"},
+    {"id": "Ursa", "name": "Ursa", "desc": "Kraftvoll, präsent & selbstbewusst (Weiblich)", "category": "📖 Erzähler & Storytelling"},
 ]
 
 # Translation & Instruction Configuration
@@ -139,18 +167,20 @@ SUPPORTED_LANGUAGES = [
     {"id": "hr", "name": "🇭🇷 Kroatisch"},
 ]
 
-# Audio Emotion & Style Tags (Display Name, Tag Text, Tooltip/Description, Category)
+# Audio Emotion & Style Tags (Display Name, Tag Text, Native Gemini Tag, Tooltip/Description)
 AUDIO_TAGS = [
-    {"display": "😂 Lachen", "tag": "[lachen]", "gemini_tag": "[laugh]", "desc": "Lachen oder belustigter Ton"},
-    {"display": "🤫 Flüstern", "tag": "[flüstern]", "gemini_tag": "[whisper]", "desc": "Geflüsterter, leiser Ton"},
-    {"display": "😢 Traurig", "tag": "[traurig]", "gemini_tag": "[sad]", "desc": "Gedrückte, traurige Stimmlage"},
+    {"display": "😂 Lachen", "tag": "[lachen]", "gemini_tag": "<laughs>", "desc": "Hörbares, natürliches Lachen oder Heiterkeit"},
+    {"display": "😮‍💨 Seufzen", "tag": "[seufzen]", "gemini_tag": "<sigh>", "desc": "Hörbares Seufzen oder emotionale Entlastung"},
+    {"display": "😮 Einatmen", "tag": "[einatmen]", "gemini_tag": "<gasp>", "desc": "Überraschtes oder tiefes Luftholen / Gasp"},
+    {"display": "🗣️ Räuspern", "tag": "[räuspern]", "gemini_tag": "<throat-clearing>", "desc": "Hörbares Räuspern vor dem Weitersprechen"},
+    {"display": "🤝 Zustimmung (mhm)", "tag": "[mhm]", "gemini_tag": "|mhm|", "desc": "Natürliches bejahendes / zustimmendes Brummen"},
+    {"display": "🤫 Flüstern", "tag": "[flüstern]", "gemini_tag": "[whispering]", "desc": "Geflüsterter, leiser und intimer Ton"},
+    {"display": "⏸️ Pause", "tag": "[Pause]", "gemini_tag": "[pause]", "desc": "Kurze, wirkungsvolle Sprechpause einlegen"},
     {"display": "✨ Begeistert", "tag": "[begeistert]", "gemini_tag": "[excited]", "desc": "Energiegeladen und enthusiastisch"},
-    {"display": "⏸️ Pause", "tag": "[Pause]", "gemini_tag": "[pause]", "desc": "Kurze Sprechpause einlegen"},
-    {"display": "😮‍💨 Seufzen", "tag": "[seufzen]", "gemini_tag": "[sigh]", "desc": "Hörbares Seufzen"},
-    {"display": "😠 Wütend", "tag": "[wütend]", "gemini_tag": "[angry]", "desc": "Verärgerte, energische Betonung"},
-    {"display": "🤔 Nachdenklich", "tag": "[nachdenklich]", "gemini_tag": "[thoughtful]", "desc": "Zögernd, reflektierend"},
-    {"display": "🐢 Langsam", "tag": "[langsam]", "gemini_tag": "[slow]", "desc": "Verlangsamtes Sprechtempo"},
-    {"display": "🐇 Schnell", "tag": "[schnell]", "gemini_tag": "[fast]", "desc": "Erhöhtes Sprechtempo"},
+    {"display": "🤔 Nachdenklich", "tag": "[nachdenklich]", "gemini_tag": "[thoughtful]", "desc": "Zögernd, reflektierend und bedacht"},
+    {"display": "😢 Traurig", "tag": "[traurig]", "gemini_tag": "[sad]", "desc": "Gedrückte, melancholische Stimmlage"},
+    {"display": "🐢 Langsam", "tag": "[langsam]", "gemini_tag": "[slow]", "desc": "Deutlich verlangsamtes Sprechtempo"},
+    {"display": "🐇 Schnell", "tag": "[schnell]", "gemini_tag": "[fast]", "desc": "Erhöhtes, dynamisches Sprechtempo"},
 ]
 
 # Audio Format Presets

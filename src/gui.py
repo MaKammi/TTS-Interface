@@ -19,6 +19,8 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
 from .config import (
+    APP_VERSION,
+    GITHUB_REPO,
     AVAILABLE_VOICES,
     AVAILABLE_MODELS,
     SUPPORTED_LANGUAGES,
@@ -39,6 +41,7 @@ from .player import AudioPlayer
 from .document_parser import extract_text_from_file, split_into_chapters
 from .batch_processor import BatchProcessor, BatchItem
 from .translation_service import TranslationService
+from .updater import UpdateService
 
 
 ctk.set_appearance_mode("Light")
@@ -288,8 +291,9 @@ class APIKeyDialog(ctk.CTkToplevel):
 
     def __init__(self, parent, on_save_callback):
         super().__init__(parent)
-        self.title("Gemini API-Key Einstellungen")
-        self.geometry("540x260")
+        self.parent_app = parent
+        self.title("Gemini API-Key & App-Status")
+        self.geometry("540x300")
         self.resizable(False, False)
         self.on_save_callback = on_save_callback
 
@@ -308,7 +312,7 @@ class APIKeyDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=18, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        lbl.pack(pady=(18, 6))
+        lbl.pack(pady=(16, 4))
 
         desc = ctk.CTkLabel(
             frame,
@@ -317,7 +321,7 @@ class APIKeyDialog(ctk.CTkToplevel):
             text_color=COLOR_MUTED_TEXT,
             justify="center"
         )
-        desc.pack(pady=(0, 14))
+        desc.pack(pady=(0, 10))
 
         self.key_entry = ctk.CTkEntry(
             frame,
@@ -332,11 +336,38 @@ class APIKeyDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             text_color=COLOR_PRIMARY_TEXT
         )
-        self.key_entry.pack(pady=6)
+        self.key_entry.pack(pady=4)
         self.key_entry.insert(0, get_api_key())
 
+        # Version & Update check row
+        info_row = ctk.CTkFrame(frame, fg_color="transparent")
+        info_row.pack(fill="x", padx=30, pady=(6, 8))
+
+        ver_lbl = ctk.CTkLabel(
+            info_row,
+            text=f"Version {APP_VERSION}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        ver_lbl.pack(side="left")
+
+        check_update_btn = ctk.CTkButton(
+            info_row,
+            text="🔄 Auf Updates prüfen",
+            command=self._check_updates,
+            height=28,
+            corner_radius=14,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=M3_PRIMARY,
+            border_width=1.5,
+            border_color=M3_OUTLINE
+        )
+        check_update_btn.pack(side="right")
+
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=(18, 12))
+        btn_frame.pack(pady=(10, 10))
 
         save_btn = ctk.CTkButton(
             btn_frame,
@@ -371,6 +402,10 @@ class APIKeyDialog(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
+    def _check_updates(self):
+        if hasattr(self.parent_app, "_check_for_updates_manual"):
+            self.parent_app._check_for_updates_manual()
+
     def _save(self):
         new_key = self.key_entry.get().strip()
         if not new_key:
@@ -380,6 +415,183 @@ class APIKeyDialog(ctk.CTkToplevel):
         if self.on_save_callback:
             self.on_save_callback(new_key)
         self.destroy()
+
+
+class UpdateDialog(ctk.CTkToplevel):
+    """Modern Material 3 Dialog for reviewing release notes and applying app updates."""
+
+    def __init__(self, parent, update_info: Dict[str, Any], update_service: UpdateService):
+        super().__init__(parent)
+        self.parent_app = parent
+        self.update_info = update_info
+        self.update_service = update_service
+        self.is_downloading = False
+
+        self.title("Gemini TTS Studio Update")
+        self.geometry("620x480")
+        self.resizable(False, False)
+
+        frame = ctk.CTkFrame(
+            self,
+            corner_radius=18,
+            fg_color=M3_SURFACE,
+            border_width=1.5,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        frame.pack(padx=20, pady=20, fill="both", expand=True)
+
+        header_row = ctk.CTkFrame(frame, fg_color="transparent")
+        header_row.pack(fill="x", padx=20, pady=(18, 6))
+
+        title_lbl = ctk.CTkLabel(
+            header_row,
+            text=f"✨ Update verfügbar: {update_info.get('latest_version', '')}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=18, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        title_lbl.pack(side="left")
+
+        current_ver_lbl = ctk.CTkLabel(
+            header_row,
+            text=f"Installiert: v{APP_VERSION}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_MUTED_TEXT
+        )
+        current_ver_lbl.pack(side="right")
+
+        desc_lbl = ctk.CTkLabel(
+            frame,
+            text="Eine neue Version von Gemini TTS Studio ist bereit zur Installation.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT,
+            anchor="w"
+        )
+        desc_lbl.pack(fill="x", padx=20, pady=(0, 10))
+
+        # Release Notes Box
+        ctk.CTkLabel(
+            frame,
+            text="Neuerungen & Änderungen:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=M3_PRIMARY,
+            anchor="w"
+        ).pack(fill="x", padx=20, pady=(0, 4))
+
+        notes_box = ctk.CTkTextbox(
+            frame,
+            height=150,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            wrap="word",
+            corner_radius=12,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT,
+            fg_color=M3_SURFACE_CONTAINER,
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        notes_box.pack(fill="x", padx=20, pady=(0, 10))
+        notes_content = update_info.get("release_notes") or update_info.get("release_name") or "Keine Versionshinweise hinterlegt."
+        notes_box.insert("0.0", notes_content)
+        notes_box.configure(state="disabled")
+
+        # Progress row
+        self.progress_bar = ctk.CTkProgressBar(
+            frame,
+            height=8,
+            corner_radius=4,
+            progress_color=M3_PRIMARY[0],
+            fg_color=M3_SURFACE_CONTAINER
+        )
+        self.progress_bar.set(0.0)
+
+        self.status_lbl = ctk.CTkLabel(
+            frame,
+            text="Bereit zum Aktualisieren. Deine Einstellungen und der API-Key bleiben erhalten.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT,
+            anchor="w"
+        )
+        self.status_lbl.pack(fill="x", padx=20, pady=(0, 8))
+
+        btn_row = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_row.pack(fill="x", padx=20, pady=(4, 14))
+
+        self.update_btn = ctk.CTkButton(
+            btn_row,
+            text="🚀 Jetzt aktualisieren & neu starten",
+            command=self._start_update,
+            height=38,
+            corner_radius=19,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=("#FFFFFF", "#00201C")
+        )
+        self.update_btn.pack(side="left", padx=(0, 10))
+
+        self.cancel_btn = ctk.CTkButton(
+            btn_row,
+            text="Später",
+            command=self.destroy,
+            height=38,
+            corner_radius=19,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="transparent",
+            hover_color=M3_SURFACE_CONTAINER,
+            text_color=COLOR_MUTED_TEXT,
+            border_width=1.5,
+            border_color=M3_OUTLINE
+        )
+        self.cancel_btn.pack(side="left")
+
+        self.transient(parent)
+        self.grab_set()
+
+    def _start_update(self):
+        if self.is_downloading:
+            return
+        self.is_downloading = True
+        self.update_btn.configure(state="disabled", text="⏳ Lade Update herunter...")
+        self.cancel_btn.configure(state="disabled")
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 8))
+        self.progress_bar.set(0.05)
+
+        def run_download():
+            def on_progress(fraction, status_str):
+                self.after(0, lambda: self._update_progress(fraction, status_str))
+
+            download_url = self.update_info.get("download_url", "")
+            asset_url = self.update_info.get("asset_url", "")
+            dest_file = self.update_service.download_update(
+                download_url,
+                asset_url=asset_url,
+                progress_callback=on_progress
+            )
+
+            if not dest_file or not dest_file.exists():
+                self.after(0, self._on_download_failed)
+                return
+
+            self.after(0, lambda: self._on_download_success(dest_file))
+
+        threading.Thread(target=run_download, daemon=True).start()
+
+    def _update_progress(self, fraction, status_str):
+        self.progress_bar.set(fraction)
+        self.status_lbl.configure(text=f"Lade herunter: {status_str}...")
+
+    def _on_download_failed(self):
+        self.is_downloading = False
+        self.progress_bar.pack_forget()
+        self.update_btn.configure(state="normal", text="🚀 Erneut versuchen")
+        self.cancel_btn.configure(state="normal")
+        self.status_lbl.configure(text="Fehler beim Herunterladen des Updates.", text_color=M3_ERROR)
+        messagebox.showerror("Update fehlgeschlagen", "Das Update konnte nicht heruntergeladen werden. Bitte prüfe deine Internetverbindung.")
+
+    def _on_download_success(self, downloaded_exe: Path):
+        self.status_lbl.configure(text="Download erfolgreich! Starte Anwendung neu...", text_color="#10B981")
+        self.progress_bar.set(1.0)
+        self.after(800, lambda: self.update_service.apply_update_and_restart(downloaded_exe))
+
 
 
 class AutoScrollableFrame(ctk.CTkScrollableFrame):
@@ -422,6 +634,9 @@ class GeminiTTSApp(ctk.CTk):
         self.player = AudioPlayer()
         self.batch_processor = BatchProcessor()
         self.translation_service = TranslationService()
+        self.update_service = UpdateService()
+        self.pending_update: Optional[Dict[str, Any]] = None
+        self.update_btn: Optional[ctk.CTkButton] = None
         
         self.current_generated_wav: Optional[Path] = None
         self.current_converted_file: Optional[Path] = None
@@ -437,26 +652,44 @@ class GeminiTTSApp(ctk.CTk):
         self._build_ui()
         self._setup_player_timer()
 
+        # Start silent background update check after 2 seconds
+        threading.Thread(target=self._check_for_updates_background, daemon=True).start()
+
     def _build_ui(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         # ------------------ Header Bar ------------------
-        header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=M3_SURFACE)
-        header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
-        header_frame.grid_columnconfigure(1, weight=1)
+        self.header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=M3_SURFACE)
+        self.header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
+        self.header_frame.grid_columnconfigure(1, weight=1)
+
+        title_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        title_box.grid(row=0, column=0, padx=24, pady=14, sticky="w")
 
         title_label = ctk.CTkLabel(
-            header_frame,
+            title_box,
             text="🎙️ Gemini TTS Studio",
             font=ctk.CTkFont(family=FONT_FAMILY, size=21, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        title_label.grid(row=0, column=0, padx=24, pady=14, sticky="w")
+        title_label.pack(side="left")
+
+        version_badge = ctk.CTkLabel(
+            title_box,
+            text=f"v{APP_VERSION}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=M3_SURFACE_CONTAINER,
+            text_color=COLOR_MUTED_TEXT,
+            corner_radius=8,
+            padx=8,
+            pady=2
+        )
+        version_badge.pack(side="left", padx=(10, 0))
 
         # API-Key Badge & Settings Button (M3 Tonal Pill)
         self.key_status_btn = ctk.CTkButton(
-            header_frame,
+            self.header_frame,
             text=self._get_key_status_text(),
             command=self._open_api_key_dialog,
             width=180,
@@ -564,6 +797,44 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.char_counter_lbl.pack(side="right", padx=(0, 8))
 
+        # Expressive Quick-Tag Bar (Fast 1-click chip buttons directly above text area)
+        quick_tag_bar = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
+        quick_tag_bar.pack(fill="x", padx=20, pady=(0, 6))
+
+        ctk.CTkLabel(
+            quick_tag_bar,
+            text="🎭 Regie-Cues:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=M3_PRIMARY
+        ).pack(side="left", padx=(0, 6))
+
+        quick_tags = [
+            ("😂 Lachen", "[lachen]"),
+            ("😮‍💨 Seufzen", "[seufzen]"),
+            ("😮 Einatmen", "[einatmen]"),
+            ("🗣️ Räuspern", "[räuspern]"),
+            ("🤝 mhm", "[mhm]"),
+            ("🤫 Flüstern", "[flüstern]"),
+            ("⏸️ Pause", "[Pause]"),
+            ("✨ Begeistert", "[begeistert]"),
+        ]
+
+        for display, tag_code in quick_tags:
+            q_btn = ctk.CTkButton(
+                quick_tag_bar,
+                text=display,
+                command=lambda t=tag_code: self._insert_tag(t),
+                height=28,
+                corner_radius=14,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                fg_color=M3_SURFACE_CONTAINER,
+                hover_color=M3_PRIMARY_CONTAINER,
+                text_color=COLOR_PRIMARY_TEXT,
+                border_width=1,
+                border_color=M3_OUTLINE_VARIANT
+            )
+            q_btn.pack(side="left", padx=2)
+
         # Main text input area (Enlarged to 250px as dominant Hero field)
         self.text_input = ctk.CTkTextbox(
             self.single_text_card,
@@ -577,7 +848,7 @@ class GeminiTTSApp(ctk.CTk):
             text_color=COLOR_PRIMARY_TEXT
         )
         self.text_input.pack(fill="x", padx=20, pady=(0, 8))
-        self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
+        self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini 3.8 Flash TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
@@ -633,16 +904,18 @@ class GeminiTTSApp(ctk.CTk):
         # Collapsed by default
 
         tags_display_list = [
-            ("[lachen]", "+ [lachen]"),
-            ("[flüstern]", "+ [flüstern]"),
-            ("[traurig]", "+ [traurig]"),
-            ("[begeistert]", "+ [begeistert]"),
-            ("[Pause]", "+ [Pause]"),
-            ("[seufzen]", "+ [seufzen]"),
-            ("[wütend]", "+ [wütend]"),
-            ("[nachdenklich]", "+ [nachdenklich]"),
-            ("[langsam]", "+ [langsam]"),
-            ("[schnell]", "+ [schnell]"),
+            ("[lachen]", "😂 [lachen]"),
+            ("[seufzen]", "😮‍💨 [seufzen]"),
+            ("[einatmen]", "😮 [einatmen]"),
+            ("[räuspern]", "🗣️ [räuspern]"),
+            ("[mhm]", "🤝 [mhm]"),
+            ("[flüstern]", "🤫 [flüstern]"),
+            ("[Pause]", "⏸️ [Pause]"),
+            ("[begeistert]", "✨ [begeistert]"),
+            ("[nachdenklich]", "🤔 [nachdenklich]"),
+            ("[traurig]", "😢 [traurig]"),
+            ("[langsam]", "🐢 [langsam]"),
+            ("[schnell]", "🐇 [schnell]"),
         ]
 
         for i, (tag_code, label_text) in enumerate(tags_display_list):
@@ -1088,12 +1361,38 @@ class GeminiTTSApp(ctk.CTk):
         voice_box = ctk.CTkFrame(voice_card, fg_color="transparent")
         voice_box.grid(row=0, column=0, padx=18, pady=16, sticky="nsew")
         
+        voice_header_row = ctk.CTkFrame(voice_box, fg_color="transparent")
+        voice_header_row.pack(fill="x", pady=(0, 6))
+
         ctk.CTkLabel(
-            voice_box,
+            voice_header_row,
             text="🗣️ Stimme",
             font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(side="left")
+
+        # Category Filter Dropdown
+        self.voice_categories = ["Alle Stimmen", "⭐ Favoriten & Allrounder", "🇩🇪 Deutsche Stimmen & Rollen", "📖 Erzähler & Storytelling"]
+        self.voice_category_var = ctk.StringVar(value="Alle Stimmen")
+        self.voice_category_menu = ctk.CTkOptionMenu(
+            voice_header_row,
+            values=self.voice_categories,
+            variable=self.voice_category_var,
+            command=self._on_voice_category_changed,
+            height=26,
+            width=135,
+            corner_radius=10,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT,
+            dropdown_fg_color=M3_SURFACE,
+            dropdown_hover_color=("#E0ECE9", "#1C302D"),
+            dropdown_text_color=COLOR_PRIMARY_TEXT
+        )
+        self.voice_category_menu.pack(side="right")
 
         voice_options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in AVAILABLE_VOICES]
         self.voice_var = ctk.StringVar(value=voice_options[0])
@@ -1197,7 +1496,7 @@ class GeminiTTSApp(ctk.CTk):
 
         ctk.CTkLabel(
             model_box,
-            text="Standard: Gemini 3.1 Flash TTS Engine.",
+            text="Standard: Gemini 3.8 Flash TTS Engine (Studio-Qualität).",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
         ).pack(anchor="w", pady=(6, 0))
@@ -2083,13 +2382,8 @@ class GeminiTTSApp(ctk.CTk):
             self._open_api_key_dialog()
             return
 
-        voice_choice = self.voice_var.get().split(" ")[0]
-        selected_model_name = self.model_var.get()
-        model_id = "gemini-3.1-flash-tts-preview"
-        for m in AVAILABLE_MODELS:
-            if m["name"] == selected_model_name:
-                model_id = m["id"]
-                break
+        voice_choice = self._get_selected_voice_id()
+        model_id = self._get_selected_model_id()
 
         selected_lang_name = self.lang_var.get()
         lang_id = "auto"
@@ -2183,6 +2477,66 @@ class GeminiTTSApp(ctk.CTk):
         self.key_status_btn.configure(text=self._get_key_status_text())
         messagebox.showinfo("Erfolg", "API-Key wurde erfolgreich gespeichert!")
 
+    # ------------------ Auto-Update Methods ------------------
+
+    def _check_for_updates_background(self):
+        """Silently checks for updates in background on launch."""
+        time.sleep(2.5)  # Wait for GUI to settle
+        try:
+            update_info = self.update_service.check_for_updates()
+            if update_info and update_info.get("update_available"):
+                self.pending_update = update_info
+                self.after(0, lambda: self._show_update_badge(update_info))
+        except Exception:
+            pass
+
+    def _show_update_badge(self, update_info: Dict[str, Any]):
+        """Renders an eye-catching update button in the header bar."""
+        if self.update_btn and self.update_btn.winfo_exists():
+            self.update_btn.grid()
+            return
+
+        latest_ver = update_info.get("latest_version", "")
+        self.update_btn = ctk.CTkButton(
+            self.header_frame,
+            text=f"✨ Update {latest_ver} verfügbar",
+            command=lambda: self._open_update_dialog(update_info),
+            height=36,
+            corner_radius=18,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="#D97706",  # Warm Amber CTA
+            hover_color="#B45309",
+            text_color="#FFFFFF",
+            border_width=0
+        )
+        self.update_btn.grid(row=0, column=1, padx=(10, 14), pady=14, sticky="e")
+
+    def _open_update_dialog(self, update_info: Dict[str, Any]):
+        """Opens the full UpdateDialog."""
+        UpdateDialog(self, update_info, self.update_service)
+
+    def _check_for_updates_manual(self):
+        """Triggered manually by user from settings."""
+        def run_check():
+            try:
+                update_info = self.update_service.check_for_updates()
+                if update_info and update_info.get("update_available"):
+                    self.pending_update = update_info
+                    self.after(0, lambda: self._show_update_badge(update_info))
+                    self.after(100, lambda: self._open_update_dialog(update_info))
+                else:
+                    self.after(0, lambda: messagebox.showinfo(
+                        "Kein Update verfügbar",
+                        f"Du nutzt bereits die neueste Version von Gemini TTS Studio (v{APP_VERSION})."
+                    ))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Update-Prüfung",
+                    f"Fehler bei der Verbindung zu GitHub: {e}"
+                ))
+
+        threading.Thread(target=run_check, daemon=True).start()
+
     def _toggle_theme(self):
         mode = ctk.get_appearance_mode()
         new_mode = "Light" if mode == "Dark" else "Dark"
@@ -2199,16 +2553,43 @@ class GeminiTTSApp(ctk.CTk):
         self.char_counter_lbl.configure(text=f"{chars:,} Zeichen | {words:,} Wörter")
 
     def _insert_tag(self, tag: str):
-        self.text_input.insert("insert", f" {tag} ")
+        self.text_input.insert("insert", f"{tag} ")
         self.text_input.focus_set()
         self._update_counters()
 
+    def _get_selected_voice_id(self) -> str:
+        raw = self.voice_var.get()
+        if " (" in raw:
+            return raw.split(" (")[0].strip()
+        return raw.strip()
+
+    def _get_selected_model_id(self) -> str:
+        selected_model_name = self.model_var.get()
+        for m in AVAILABLE_MODELS:
+            if m["name"] == selected_model_name:
+                return m["id"]
+        return AVAILABLE_MODELS[0]["id"]
+
     def _on_voice_changed(self, choice: str):
-        voice_id = choice.split(" ")[0]
+        voice_id = self._get_selected_voice_id()
         for v in AVAILABLE_VOICES:
             if v["id"] == voice_id:
                 self.voice_desc_lbl.configure(text=v["desc"])
                 break
+
+    def _on_voice_category_changed(self, category: str):
+        if category == "Alle Stimmen":
+            filtered = AVAILABLE_VOICES
+        else:
+            filtered = [v for v in AVAILABLE_VOICES if v.get("category") == category]
+        
+        if not filtered:
+            filtered = AVAILABLE_VOICES
+
+        options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in filtered]
+        self.voice_menu.configure(values=options)
+        self.voice_var.set(options[0])
+        self._on_voice_changed(options[0])
 
     def _on_preset_changed(self, choice: str):
         preset = None
@@ -2285,13 +2666,8 @@ class GeminiTTSApp(ctk.CTk):
             )
             return
 
-        voice_choice = self.voice_var.get().split(" ")[0]
-        selected_model_name = self.model_var.get()
-        model_id = "gemini-3.1-flash-tts-preview"
-        for m in AVAILABLE_MODELS:
-            if m["name"] == selected_model_name:
-                model_id = m["id"]
-                break
+        voice_choice = self._get_selected_voice_id()
+        model_id = self._get_selected_model_id()
 
         system_prompt = self._get_current_system_prompt()
         settings = self._get_current_encoding_settings()

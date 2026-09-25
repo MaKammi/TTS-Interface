@@ -19,17 +19,17 @@ Unterstützt native **Audio-Tags / Regieanweisungen** (z. B. `[lachen]`, `[flüs
 
 ## Features
 
-- 🎙️ **Gemini TTS Engine**: Nutzung moderner Gemini-Modelle (`gemini-3.1-flash-tts-preview` / `gemini-2.5-flash-preview-tts`).
-- 🎭 **Audio-Tags & Emotionen**: Unterstützung von Regieanweisungen im Text (z. B. `[lachen]`, `[traurig]`, `[flüstern]`, `[begeistert]`, `[Pause]`, `[seufzen]`).
-- 📜 **Smart Chunking (Keine Timeouts bei langen Texten)**: Zerlegt lange Texte automatisch an Satz- und Absatzgrenzen und fügt die Audiodaten nahtlos zusammen.
-- 👥 **Stimmenauswahl**: Auswahl aus Charakterstimmen (*Puck*, *Charon*, *Kore*, *Fenrir*, *Aoede*, *Leda*, *Orus*, *Zephyr*).
-- 🌐 **Sprachauswahl**: Automatische Spracherkennung oder feste Vorgabe (Deutsch, Englisch, etc.).
+- 🎙️ **Gemini 3.8 TTS Engine**: Volle Unterstützung für `gemini-3.8-flash-tts` (Studio-Qualität & Flaggschiff) und `gemini-3.8-flash-lite-tts` (High-Speed & Massenverarbeitung).
+- 🎭 **Expressive Regie-Cues & Audio-Tags**: 1-Klick-Toolbar für native Emotionen und non-verbale Geräusche: `<laughs>` (Lachen), `<sigh>` (Seufzen), `<gasp>` (Einatmen), `<throat-clearing>` (Räuspern), `|mhm|` (Zustimmung), `[whispering]` (Flüstern) und `[pause]`.
+- 👥 **Große Stimmenbibliothek (50+ Stimmen)**: Neben den beliebten Allroundern (*Erinome, Puck, Charon, Kore, Fenrir*) stehen native deutsche Rollen-Personas bereit (*Anwältin, Arzt, Wissenschaftler, Professorin, Lehrer, Moderatorin, Erzählerin, Kundenservice*).
+- 🔄 **Integrierter Auto-Updater**: Erkennt neue Releases auf GitHub automatisch beim Start und aktualisiert die App per 1-Klick nahtlos im laufenden Betrieb.
+- 📜 **Smart Chunking (Keine Timeouts bei langen Texten)**: Zerlegt lange Texte intelligent an Satz- und Absatzgrenzen und fügt die Audiodaten nahtlos zusammen.
+- 🌐 **Sprachauswahl & Automatische Übersetzung**: 32 Weltsprachen mit automatischer Spracherkennung oder 1-Klick-Übersetzung.
 - 🎛️ **Optimierte Audio-Formate**:
   - Standard-Preset: **AAC-LC**, **Mono**, **64 kbit/s**, **44.100 Hz / 48.000 Hz**, Container: **MP4 / M4A** mit `+faststart` Streaming-Flag.
   - Weitere Formate: MP3 (192k), verlustfreies WAV sowie freier Modus („Benutzerdefiniert“).
-  - Einklappbares Design für maximalen Platz und Übersicht.
-- 🔊 **Integrierter Audio-Player mit Scrubbing**: Flüssiges Spulen mit der Maus, Pause, Lautstärkeregelung.
-- 💾 **Export-Dialog**: Lokales Abspeichern der fertigen Datei per Windows-Dateidialog.
+- 🔊 **Integrierter Audio-Player mit Waveform & Scrubbing**: Flüssiges Spulen mit der Maus, Pause, Lautstärkeregelung.
+- 💾 **Export & Batch-Verarbeitung**: Konvertierung und Export einzelner Texte oder ganzer Dokumenten-Warteschlangen.
 - 📦 **Standalone Portable EXE**: Kann ohne Python-Installation direkt auf jedem Windows-Rechner ausgeführt werden.
 
 ---

@@ -7,6 +7,7 @@ import base64
 import wave
 import io
 import re
+import json
 import requests
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
@@ -14,21 +15,39 @@ from typing import Optional, Dict, Any, List, Callable
 from .config import get_api_key, TEMP_DIR
 
 
-# Tag translation map from German/Common tags to Gemini standard directives
+# Tag translation map from German/Common tags to Gemini 3.8 native audio cues and directives
 TAG_REPLACEMENTS = {
-    r"\[lachen\]": "[laugh]",
-    r"\[lacht\]": "[laugh]",
-    r"\[lachend\]": "[laughing]",
-    r"\[flüstern\]": "[whisper]",
-    r"\[flüstert\]": "[whisper]",
+    # Gemini 3.8 Expressive Non-Verbal Audio Cues
+    r"\[lachen\]": "<laughs>",
+    r"\[lacht\]": "<laughs>",
+    r"\[lachend\]": "<laughs>",
+    r"\[laugh\]": "<laughs>",
+    r"\[laughing\]": "<laughs>",
+    r"\[seufzen\]": "<sigh>",
+    r"\[seufzt\]": "<sigh>",
+    r"\[sigh\]": "<sigh>",
+    r"\[einatmen\]": "<gasp>",
+    r"\[gasp\]": "<gasp>",
+    r"\[räuspern\]": "<throat-clearing>",
+    r"\[räuspert\]": "<throat-clearing>",
+    r"\[throat-clearing\]": "<throat-clearing>",
+    r"\[husten\]": "<cough>",
+    r"\[cough\]": "<cough>",
+    r"\[gähnen\]": "<yawn>",
+    r"\[yawn\]": "<yawn>",
+    r"\[mhm\]": "|mhm|",
+    r"\[zustimmung\]": "|mhm|",
+    
+    # Intonation, Tone and Pace Directives
+    r"\[flüstern\]": "[whispering]",
+    r"\[flüstert\]": "[whispering]",
     r"\[flüsternd\]": "[whispering]",
+    r"\[whisper\]": "[whispering]",
     r"\[traurig\]": "[sad]",
     r"\[weinen\]": "[crying]",
     r"\[begeistert\]": "[excited]",
     r"\[fröhlich\]": "[happy]",
     r"\[glücklich\]": "[happy]",
-    r"\[seufzen\]": "[sigh]",
-    r"\[seufzt\]": "[sigh]",
     r"\[wütend\]": "[angry]",
     r"\[ärgerlich\]": "[angry]",
     r"\[nachdenklich\]": "[thoughtful]",
@@ -36,8 +55,6 @@ TAG_REPLACEMENTS = {
     r"\[schnell\]": "[fast]",
     r"\[pause\]": "[pause]",
     r"\[stille\]": "[pause]",
-    r"\[husten\]": "[cough]",
-    r"\[räuspern\]": "[cough]",
 }
 
 # Known German-to-English tone mapping for instant conversion
@@ -287,11 +304,29 @@ class GeminiTTSService:
 
         return raw_bytes
 
+    def fetch_live_voices(self) -> List[Dict[str, Any]]:
+        """Fetch updated voices dynamically from Google Gemini /v1beta/voices endpoint."""
+        current_key = self.api_key or get_api_key()
+        if not current_key:
+            return []
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/voices?pageSize=200&key={current_key}"
+            resp = requests.get(url, timeout=6)
+            if resp.status_code == 200:
+                voices = resp.json().get("voices", [])
+                cache_file = TEMP_DIR / "voices_cache.json"
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(voices, f, ensure_ascii=False)
+                return voices
+        except Exception:
+            pass
+        return []
+
     def generate_speech(
         self,
         text: str,
         voice_name: str = "Puck",
-        model: str = "gemini-3.1-flash-tts-preview",
+        model: str = "gemini-3.8-flash-tts",
         language: str = "auto",
         system_prompt: Optional[str] = None,
         progress_callback: Optional[Callable[[float, str], None]] = None
@@ -308,11 +343,16 @@ class GeminiTTSService:
             raise ValueError("Bitte gib einen Text für die Sprachgenerierung ein.")
 
         processed_text = preprocess_text_for_gemini(text)
-        chunks = split_text_into_chunks(processed_text, max_chunk_chars=300)
+        chunks = split_text_into_chunks(processed_text, max_chunk_chars=400)
         total_chunks = len(chunks)
 
         all_pcm_frames = []
-        fallback_model = "gemini-2.5-flash-preview-tts" if model != "gemini-2.5-flash-preview-tts" else "gemini-2.5-pro-preview-tts"
+        if model == "gemini-3.8-flash-tts":
+            fallback_models = ["gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview"]
+        elif model == "gemini-3.8-flash-lite-tts":
+            fallback_models = ["gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"]
+        else:
+            fallback_models = ["gemini-3.8-flash-tts", "gemini-2.5-flash-preview-tts"]
 
         # Sanitize system_prompt / tone directive and convert to English descriptors
         clean_tone = ""
@@ -334,8 +374,10 @@ class GeminiTTSService:
             pcm_chunk = self._call_single_model(chunk_to_send, voice_name, model, current_key)
             
             if pcm_chunk is None:
-                # Try fallback model
-                pcm_chunk = self._call_single_model(chunk_to_send, voice_name, fallback_model, current_key)
+                for fb_model in fallback_models:
+                    pcm_chunk = self._call_single_model(chunk_to_send, voice_name, fb_model, current_key)
+                    if pcm_chunk is not None:
+                        break
 
             if pcm_chunk is None:
                 raise RuntimeError(
