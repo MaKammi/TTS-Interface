@@ -677,27 +677,72 @@ class VoiceStudioDialog(ctk.CTkToplevel):
         )
         desc_lbl.pack(fill="x", padx=20, pady=(0, 10))
 
-        # Tabs
-        self.tabview = ctk.CTkTabview(
-            container,
-            corner_radius=14,
-            fg_color=M3_SURFACE_CONTAINER,
-            segmented_button_fg_color=M3_SURFACE,
-            segmented_button_selected_color=M3_PRIMARY,
-            segmented_button_selected_hover_color=M3_PRIMARY_HOVER,
-            segmented_button_unselected_color=M3_SURFACE,
-            segmented_button_unselected_hover_color=M3_SURFACE_CONTAINER_HIGH,
-            text_color=M3_ON_PRIMARY
-        )
-        self.tabview.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+        # Tab Navigation Bar (Robust Material 3 segmented tabs)
+        nav_bar = ctk.CTkFrame(container, fg_color=M3_SURFACE_CONTAINER, corner_radius=14, height=44)
+        nav_bar.pack(fill="x", padx=16, pady=(0, 12))
 
-        self.tab_design = self.tabview.add("🎨 Voice Design (Prompt)")
-        self.tab_replicate = self.tabview.add("🎙️ Voice Replication (Klon)")
-        self.tab_manage = self.tabview.add("🔑 Meine Stimmen & IDs")
+        self.tab_buttons: Dict[str, ctk.CTkButton] = {}
+        self.tab_frames: Dict[str, ctk.CTkFrame] = {}
+
+        tabs_info = [
+            ("design", "🎨 Voice Design (Prompt)"),
+            ("replicate", "🎙️ Voice Replication (Klon)"),
+            ("manage", "🔑 Meine Stimmen & IDs")
+        ]
+
+        for tab_id, label in tabs_info:
+            btn = ctk.CTkButton(
+                nav_bar,
+                text=label,
+                command=lambda t=tab_id: self._switch_tab(t),
+                height=36,
+                corner_radius=10,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+                fg_color="transparent",
+                hover_color=M3_SURFACE_CONTAINER_HIGH,
+                text_color=COLOR_MUTED_TEXT
+            )
+            btn.pack(side="left", padx=4, pady=4, fill="x", expand=True)
+            self.tab_buttons[tab_id] = btn
+
+        # Tab Content Container
+        self.tab_content_area = ctk.CTkFrame(container, fg_color=M3_SURFACE_CONTAINER, corner_radius=14)
+        self.tab_content_area.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+
+        self.tab_design = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_replicate = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_manage = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+
+        self.tab_frames["design"] = self.tab_design
+        self.tab_frames["replicate"] = self.tab_replicate
+        self.tab_frames["manage"] = self.tab_manage
 
         self._build_tab_design()
         self._build_tab_replicate()
         self._build_tab_manage()
+
+        self._switch_tab("design")
+
+    def _switch_tab(self, active_tab: str):
+        for t_id, frame in self.tab_frames.items():
+            if t_id == active_tab:
+                frame.pack(fill="both", expand=True, padx=8, pady=8)
+            else:
+                frame.pack_forget()
+
+        for t_id, btn in self.tab_buttons.items():
+            if t_id == active_tab:
+                btn.configure(
+                    fg_color=M3_PRIMARY,
+                    hover_color=M3_PRIMARY_HOVER,
+                    text_color=("#FFFFFF", "#00201C")
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    hover_color=M3_SURFACE_CONTAINER_HIGH,
+                    text_color=COLOR_MUTED_TEXT
+                )
 
     # =========================================================================
     # TAB 1: VOICE DESIGN (PROMPT-TO-VOICE)
@@ -2521,8 +2566,8 @@ class GeminiTTSApp(ctk.CTk):
         super().__init__()
 
         self.title("Gemini TTS Studio - Windows Interface")
-        self.geometry("1120x920")
-        self.minsize(860, 560)
+        self.geometry("1020x720")
+        self.minsize(860, 540)
 
         self.tts_service = GeminiTTSService()
         self.player = AudioPlayer()
@@ -2803,8 +2848,8 @@ class GeminiTTSApp(ctk.CTk):
                 quick_tag_bar,
                 text=display,
                 command=lambda t=tag_code: self._insert_tag(t),
-                height=28,
-                corner_radius=14,
+                height=26,
+                corner_radius=13,
                 font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
                 fg_color=M3_SURFACE_CONTAINER,
                 hover_color=M3_PRIMARY_CONTAINER,
@@ -2814,31 +2859,48 @@ class GeminiTTSApp(ctk.CTk):
             )
             q_btn.pack(side="left", padx=2)
 
-        # Main text input area (Enlarged as dominant Hero field)
+        self.more_tags_menu = ctk.CTkOptionMenu(
+            quick_tag_bar,
+            values=["+ Mehr Tags ▾", "🤔 [nachdenklich]", "😢 [traurig]", "🐢 [langsam]", "🐇 [schnell]"],
+            command=self._on_more_tag_selected,
+            height=26,
+            width=120,
+            corner_radius=13,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            fg_color=M3_SURFACE_CONTAINER,
+            button_color=("#D9E3E0", "#243834"),
+            button_hover_color=("#C8D7D3", "#304843"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.more_tags_menu.pack(side="left", padx=3)
+
+        # Main text input area (Compact height 165px so everything fits on screen without scrollbar)
         self.text_input = ctk.CTkTextbox(
             self.single_text_card,
-            height=330,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=14),
+            height=165,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             wrap="word",
-            corner_radius=16,
+            corner_radius=14,
             border_width=1.5,
             border_color=M3_OUTLINE_VARIANT,
             fg_color=("#FFFFFF", "#0E1A18"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        self.text_input.pack(fill="x", padx=20, pady=(0, 8))
+        self.text_input.pack(fill="x", padx=20, pady=(0, 6))
         self.text_input.insert("0.0", "Hallo! Dies ist ein Test mit Gemini 3.8 Flash TTS. [lachen] Es ist wirklich erstaunlich, wie lebendig die Stimme klingt! [flüstern] Kannst du ein Geheimnis für dich behalten?")
         self.text_input.bind("<KeyRelease>", self._update_counters)
         self._update_counters()
 
-        # Translation check row
-        trans_options_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        trans_options_frame.pack(fill="x", padx=20, pady=(0, 10))
+        # Integrated Action Footer Bar (Directly inside script card)
+        script_footer = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
+        script_footer.pack(fill="x", padx=20, pady=(2, 10))
 
+        # Left: Translation checkbox
         self.auto_translate_var = ctk.BooleanVar(value=False)
         self.auto_translate_check = ctk.CTkCheckBox(
-            trans_options_frame,
-            text="Text vor Vertonung automatisch in die ausgewählte Zielsprache übersetzen",
+            script_footer,
+            text="Vor Vertonung übersetzen",
             variable=self.auto_translate_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT,
@@ -2847,73 +2909,43 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.auto_translate_check.pack(side="left")
 
-        # Audio-Tags Toolbar (Collapsible by default as requested)
-        self.tag_section_frame = ctk.CTkFrame(self.single_text_card, fg_color="transparent")
-        self.tag_section_frame.pack(fill="x", padx=20, pady=(0, 14))
+        # Center: Live status indicator
+        self.status_lbl = ctk.CTkLabel(
+            script_footer,
+            text="Bereit zur Sprachgenerierung. (Strg+Enter)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_MUTED_TEXT,
+            anchor="w"
+        )
+        self.status_lbl.pack(side="left", padx=(14, 10))
 
-        tag_header_row = ctk.CTkFrame(self.tag_section_frame, fg_color="transparent")
-        tag_header_row.pack(fill="x", pady=(0, 4))
-
-        tag_title_lbl = ctk.CTkLabel(
-            tag_header_row,
-            text="🎭 Audio-Tags einfügen (z. B. [lachen], [flüstern], [Pause]):",
+        # Right: Prominent Generate CTA Button (Merged right into the card!)
+        self.generate_btn = ctk.CTkButton(
+            script_footer,
+            text="⚡ Audio generieren",
+            command=self._start_generation_thread,
+            width=180,
+            height=38,
+            corner_radius=19,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=M3_PRIMARY
+            fg_color=M3_CTA,
+            hover_color=M3_CTA_HOVER,
+            text_color="#FFFFFF",
+            text_color_disabled="#FFFFFF"
         )
-        tag_title_lbl.pack(side="left")
+        self.generate_btn.pack(side="right")
 
-        self.tag_toggle_btn = ctk.CTkButton(
-            tag_header_row,
-            text="▾ Audio-Tags anzeigen",
-            command=self._toggle_tags_panel,
-            height=32,
-            width=170,
-            corner_radius=16,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
-            fg_color="transparent",
-            hover_color=M3_SURFACE_CONTAINER,
-            text_color=M3_PRIMARY,
-            border_width=1.5,
-            border_color=M3_OUTLINE
+        # Progress bar directly inside script card
+        self.progress_bar = ctk.CTkProgressBar(
+            self.single_text_card,
+            height=6,
+            corner_radius=3,
+            progress_color=M3_PRIMARY[0],
+            fg_color=M3_SURFACE_CONTAINER
         )
-        self.tag_toggle_btn.pack(side="right")
-
-        self.tag_buttons_frame = ctk.CTkFrame(self.tag_section_frame, fg_color="transparent")
-        self.tag_buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
-        # Collapsed by default
-
-        tags_display_list = [
-            ("[lachen]", "😂 [lachen]"),
-            ("[seufzen]", "😮‍💨 [seufzen]"),
-            ("[einatmen]", "😮 [einatmen]"),
-            ("[räuspern]", "🗣️ [räuspern]"),
-            ("[mhm]", "🤝 [mhm]"),
-            ("[flüstern]", "🤫 [flüstern]"),
-            ("[Pause]", "⏸️ [Pause]"),
-            ("[begeistert]", "✨ [begeistert]"),
-            ("[nachdenklich]", "🤔 [nachdenklich]"),
-            ("[traurig]", "😢 [traurig]"),
-            ("[langsam]", "🐢 [langsam]"),
-            ("[schnell]", "🐇 [schnell]"),
-        ]
-
-        for i, (tag_code, label_text) in enumerate(tags_display_list):
-            row_idx = i // 5
-            col_idx = i % 5
-            btn = ctk.CTkButton(
-                self.tag_buttons_frame,
-                text=label_text,
-                command=lambda t=tag_code: self._insert_tag(t),
-                height=34,
-                corner_radius=12,
-                font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-                fg_color=M3_SURFACE_CONTAINER,
-                hover_color=M3_PRIMARY_CONTAINER,
-                text_color=COLOR_PRIMARY_TEXT,
-                border_width=1,
-                border_color=M3_OUTLINE_VARIANT
-            )
-            btn.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="ew")
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 6))
+        self.progress_bar.set(0.0)
+        self.progress_bar.pack_forget()
 
         # 2B: Batch Card (Instantiated, packed only in batch mode)
         self.batch_card = ctk.CTkFrame(
@@ -3183,53 +3215,8 @@ class GeminiTTSApp(ctk.CTk):
         self.action_container = ctk.CTkFrame(main_content, fg_color="transparent")
         self.action_container.pack(fill="x", pady=(0, 0))
 
-        # 6A: Single-Text Action Card (Compact Stadium Bar)
-        self.single_action_card = ctk.CTkFrame(
-            self.action_container,
-            corner_radius=20,
-            fg_color=M3_SURFACE,
-            border_width=1.5,
-            border_color=M3_OUTLINE_VARIANT
-        )
-        self.single_action_card.pack(fill="x", pady=(0, 12))
-
-        action_row = ctk.CTkFrame(self.single_action_card, fg_color="transparent")
-        action_row.pack(fill="x", padx=20, pady=(12, 10))
-
-        self.generate_btn = ctk.CTkButton(
-            action_row,
-            text="⚡ Audio generieren",
-            command=self._start_generation_thread,
-            width=190,
-            height=40,
-            corner_radius=20,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            fg_color=M3_CTA,
-            hover_color=M3_CTA_HOVER,
-            text_color="#FFFFFF",
-            text_color_disabled="#FFFFFF"
-        )
-        self.generate_btn.pack(side="left", padx=(0, 14))
-
-        self.status_lbl = ctk.CTkLabel(
-            action_row,
-            text="Bereit zur Sprachgenerierung. (Strg+Enter)",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-            text_color=COLOR_MUTED_TEXT,
-            anchor="w"
-        )
-        self.status_lbl.pack(side="left", fill="x", expand=True)
-
-        self.progress_bar = ctk.CTkProgressBar(
-            self.single_action_card,
-            height=8,
-            corner_radius=4,
-            progress_color=M3_PRIMARY[0],
-            fg_color=M3_SURFACE_CONTAINER
-        )
-        self.progress_bar.pack(fill="x", padx=20, pady=(0, 10))
-        self.progress_bar.set(0.0)
-        self.progress_bar.pack_forget()
+        # 6A: Single action controls are integrated directly into single_text_card footer
+        self.single_action_card = ctk.CTkFrame(self, width=0, height=0)
 
         # 6B: Batch Action Card (Instantiated, packed only in batch mode)
         self.batch_action_card = ctk.CTkFrame(
@@ -3295,69 +3282,71 @@ class GeminiTTSApp(ctk.CTk):
         # ------------------ 7. Permanent Audio Player & Export Card (Bottom) ------------------
         player_card = ctk.CTkFrame(
             main_content,
-            corner_radius=20,
+            corner_radius=18,
             fg_color=M3_SURFACE,
             border_width=1.5,
             border_color=M3_OUTLINE_VARIANT
         )
-        player_card.pack(fill="x", pady=(0, 12))
-        player_card.grid_columnconfigure(1, weight=1)
+        player_card.pack(fill="x", pady=(0, 6))
+
+        player_header_row = ctk.CTkFrame(player_card, fg_color="transparent")
+        player_header_row.pack(fill="x", padx=18, pady=(8, 4))
 
         player_header = ctk.CTkLabel(
-            player_card,
+            player_header_row,
             text="🔊 Integrierter Audio-Player & Export",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        player_header.grid(row=0, column=0, columnspan=3, sticky="w", padx=20, pady=(16, 10))
+        player_header.pack(side="left")
 
-        # Row 1: Visual Audio Waveform Canvas Display
+        # Row 1: Visual Audio Waveform Canvas Display (Slim 38px)
         waveform_container = ctk.CTkFrame(
             player_card,
             fg_color=M3_SURFACE_CONTAINER,
-            corner_radius=16,
+            corner_radius=12,
             border_width=1,
             border_color=M3_OUTLINE_VARIANT
         )
-        waveform_container.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 12))
+        waveform_container.pack(fill="x", padx=18, pady=(0, 6))
         waveform_container.grid_columnconfigure(0, weight=1)
 
         self.waveform_view = WaveformCanvas(
             waveform_container,
             on_seek_callback=self._on_waveform_seek,
-            height=56
+            height=38
         )
-        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=6, pady=6)
+        self.waveform_view.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
 
-        # Row 2: Controls row
+        # Row 2: Unified Controls Row (All playback controls + Export in 1 line!)
         controls_frame = ctk.CTkFrame(player_card, fg_color="transparent")
-        controls_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=20, pady=0)
+        controls_frame.pack(fill="x", padx=18, pady=(0, 10))
         controls_frame.grid_columnconfigure(2, weight=1)
 
         self.play_btn = ctk.CTkButton(
             controls_frame,
             text="▶ Abspielen",
             command=self._toggle_playback,
-            width=130,
-            height=42,
-            corner_radius=21,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            width=115,
+            height=34,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             state="disabled",
             fg_color=M3_PRIMARY,
             hover_color=M3_PRIMARY_HOVER,
             text_color=("#FFFFFF", "#00201C"),
             text_color_disabled=COLOR_MUTED_TEXT
         )
-        self.play_btn.grid(row=0, column=0, padx=(0, 10))
+        self.play_btn.grid(row=0, column=0, padx=(0, 6))
 
         self.stop_btn = ctk.CTkButton(
             controls_frame,
             text="■ Stopp",
             command=self._stop_playback,
-            width=100,
-            height=42,
-            corner_radius=21,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            width=80,
+            height=34,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             state="disabled",
             fg_color="transparent",
             hover_color=M3_ERROR_HOVER,
@@ -3366,7 +3355,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=1.5,
             border_color=M3_ERROR_CONTAINER
         )
-        self.stop_btn.grid(row=0, column=1, padx=(0, 14))
+        self.stop_btn.grid(row=0, column=1, padx=(0, 10))
 
         # Interactive Playhead Timeline Slider
         self.timeline_slider = ctk.CTkSlider(
@@ -3381,7 +3370,7 @@ class GeminiTTSApp(ctk.CTk):
             progress_color=M3_PRIMARY[0]
         )
         self.timeline_slider.set(0.0)
-        self.timeline_slider.grid(row=0, column=2, sticky="ew", padx=10)
+        self.timeline_slider.grid(row=0, column=2, sticky="ew", padx=8)
 
         self.timeline_slider.bind("<Button-1>", self._on_slider_press)
         self.timeline_slider.bind("<ButtonRelease-1>", self._on_slider_release)
@@ -3390,40 +3379,41 @@ class GeminiTTSApp(ctk.CTk):
         self.time_lbl = ctk.CTkLabel(
             controls_frame,
             text="00:00 / 00:00",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             text_color=COLOR_PRIMARY_TEXT
         )
-        self.time_lbl.grid(row=0, column=3, padx=(10, 16))
+        self.time_lbl.grid(row=0, column=3, padx=(6, 12))
 
         # Volume control
+        vol_box = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        vol_box.grid(row=0, column=4, padx=(0, 10))
         ctk.CTkLabel(
-            controls_frame,
-            text="Lautstärke:",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            vol_box,
+            text="🔊",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT
-        ).grid(row=0, column=4, padx=(0, 6))
-        
+        ).pack(side="left", padx=(0, 4))
         self.volume_slider = ctk.CTkSlider(
-            controls_frame,
+            vol_box,
             from_=0.0,
             to=1.0,
-            width=100,
+            width=70,
             command=self._on_volume_changed,
             button_color=M3_PRIMARY[0],
             button_hover_color=M3_PRIMARY_HOVER[0],
             progress_color=M3_PRIMARY[0]
         )
         self.volume_slider.set(0.8)
-        self.volume_slider.grid(row=0, column=5, padx=(0, 0))
+        self.volume_slider.pack(side="left")
 
-        # Row 3: Export Button (M3 Tonal Stadium)
+        # Export Button (Seamlessly integrated into controls row!)
         self.export_btn = ctk.CTkButton(
-            player_card,
-            text="💾 Audiodatei speichern unter...",
+            controls_frame,
+            text="💾 Speichern...",
             command=self._export_audio,
-            height=44,
-            corner_radius=22,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            height=34,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
             fg_color=M3_SECONDARY_CONTAINER,
             hover_color=("#BDDFD8", "#24403C"),
             text_color=M3_ON_SECONDARY_CONTAINER,
@@ -3431,7 +3421,7 @@ class GeminiTTSApp(ctk.CTk):
             border_width=0,
             state="disabled"
         )
-        self.export_btn.grid(row=3, column=0, columnspan=3, sticky="ew", padx=20, pady=(14, 18))
+        self.export_btn.grid(row=0, column=5, padx=(4, 0))
 
     # ------------------ Settings Dialog & Header Status Pills ------------------
 
@@ -3477,27 +3467,19 @@ class GeminiTTSApp(ctk.CTk):
             self.current_mode = "single"
             self.batch_card.pack_forget()
             self.batch_action_card.pack_forget()
-            self.single_text_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
-            self.single_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
+            self.single_text_card.pack(fill="x", in_=self.input_container, pady=(0, 8))
         else:
             self.current_mode = "batch"
             self.single_text_card.pack_forget()
-            self.single_action_card.pack_forget()
-            self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 10))
-            self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 10))
+            self.batch_card.pack(fill="x", in_=self.input_container, pady=(0, 8))
+            self.batch_action_card.pack(fill="x", in_=self.action_container, pady=(0, 8))
 
-    # ------------------ Collapsible Audio-Tags Panel ------------------
-
-    def _toggle_tags_panel(self):
-        """Toggle collapsible Audio-Tags panel under main text field."""
-        if self.is_tags_collapsed:
-            self.tag_buttons_frame.pack(fill="x", anchor="w", pady=(6, 0))
-            self.tag_toggle_btn.configure(text="▴ Tags verbergen")
-            self.is_tags_collapsed = False
-        else:
-            self.tag_buttons_frame.pack_forget()
-            self.tag_toggle_btn.configure(text="▾ Audio-Tags anzeigen")
-            self.is_tags_collapsed = True
+    def _on_more_tag_selected(self, val: str):
+        """Inserts selected tag from the '+ Mehr Tags ▾' dropdown into script."""
+        if "[" in val and "]" in val:
+            tag = val[val.find("["):val.find("]")+1]
+            self._insert_tag(tag)
+        self.more_tags_menu.set("+ Mehr Tags ▾")
 
     # ------------------ Collapsible Batch Multi-Language Panel ------------------
 
