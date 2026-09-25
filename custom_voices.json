@@ -1,0 +1,11 @@
+[
+  {
+    "id": "voice_s3xdyoqdyo5l",
+    "name": "Deutsche Erzählerin (Warm & Ruhig)",
+    "desc": "Freundliche, ruhige deutsche Sprecherin mit warmer Stimme (Voice Design)",
+    "type": "prompted",
+    "gender": "female",
+    "language_code": "de-DE",
+    "created_at": "2026-09-25T08:31:17"
+  }
+]

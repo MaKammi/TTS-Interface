@@ -19,6 +19,7 @@ ENV_FILE = BASE_DIR / ".env"
 OUTPUT_DIR = BASE_DIR / "output"
 TEMP_DIR = BASE_DIR / "temp"
 CUSTOM_STYLES_FILE = BASE_DIR / "custom_styles.json"
+CUSTOM_VOICES_FILE = BASE_DIR / "custom_voices.json"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR.mkdir(exist_ok=True)
@@ -51,13 +52,64 @@ def delete_custom_style(name: str):
         with open(CUSTOM_STYLES_FILE, "w", encoding="utf-8") as f:
             json.dump(styles, f, ensure_ascii=False, indent=2)
 
+
+def load_custom_voices() -> list:
+    """Load user-created or imported custom voices from custom_voices.json."""
+    if CUSTOM_VOICES_FILE.exists():
+        try:
+            with open(CUSTOM_VOICES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_custom_voice(voice_data: dict):
+    """Save or update a custom voice definition."""
+    voices = load_custom_voices()
+    updated = False
+    for i, v in enumerate(voices):
+        if v.get("id") == voice_data.get("id"):
+            voices[i] = voice_data
+            updated = True
+            break
+    if not updated:
+        voices.insert(0, voice_data)
+    with open(CUSTOM_VOICES_FILE, "w", encoding="utf-8") as f:
+        json.dump(voices, f, ensure_ascii=False, indent=2)
+
+
+def delete_custom_voice(voice_id: str):
+    """Delete a custom voice definition."""
+    voices = load_custom_voices()
+    voices = [v for v in voices if v.get("id") != voice_id]
+    with open(CUSTOM_VOICES_FILE, "w", encoding="utf-8") as f:
+        json.dump(voices, f, ensure_ascii=False, indent=2)
+
+
+def get_all_voices() -> list:
+    """Return all voices combining prebuilt voices and user custom voices."""
+    custom = load_custom_voices()
+    formatted_custom = []
+    for c in custom:
+        formatted_custom.append({
+            "id": c.get("id"),
+            "name": c.get("name", c.get("id")),
+            "desc": c.get("desc", "Eigene Stimme"),
+            "category": "🎙️ Eigene / Geklonte Stimmen",
+            "type": c.get("type", "prompted"),
+            "sample_audio": c.get("sample_audio", "")
+        })
+    return formatted_custom + AVAILABLE_VOICES
+
+
 # Load environment variables (from .env next to exe/script or current dir)
 load_dotenv(ENV_FILE)
 if not os.getenv("GEMINI_API_KEY") and (Path.cwd() / ".env").exists():
     load_dotenv(Path.cwd() / ".env")
 
 # Application & Update Configuration
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 GITHUB_REPO = "MaKammi/TTS-Interface"
 
 # API Configuration

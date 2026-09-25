@@ -5,6 +5,7 @@ Features Global System-Prompt / Tone Directives with Custom Preset Saving, 32 La
 Rock-solid stable layout hierarchy where no elements jump or shift when switching tabs.
 """
 
+import base64
 import math
 import os
 import struct
@@ -12,8 +13,9 @@ import subprocess
 import threading
 import time
 import wave
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -34,6 +36,10 @@ from .config import (
     load_custom_styles,
     save_custom_style,
     delete_custom_style,
+    load_custom_voices,
+    save_custom_voice,
+    delete_custom_voice,
+    get_all_voices,
 )
 from .tts_service import GeminiTTSService
 from .audio_converter import convert_audio
@@ -58,6 +64,7 @@ COLOR_MUTED_TEXT = ("#3F4946", "#A2B2AE")         # Slate Teal Secondary Text
 M3_PRIMARY = ("#17534A", "#52DBCA")               # ZQP Forest Teal / Mint Teal
 M3_PRIMARY_HOVER = ("#10413A", "#38C2B0")
 M3_PRIMARY_CONTAINER = ("#C8ECE4", "#005048")     # Soft Tonal Teal
+M3_ON_PRIMARY = ("#FFFFFF", "#003731")
 M3_ON_PRIMARY_CONTAINER = ("#00201C", "#74F8E6")
 
 M3_SECONDARY = ("#48635E", "#AFC9C3")
@@ -591,6 +598,911 @@ class UpdateDialog(ctk.CTkToplevel):
         self.status_lbl.configure(text="Download erfolgreich! Starte Anwendung neu...", text_color="#10B981")
         self.progress_bar.set(1.0)
         self.after(800, lambda: self.update_service.apply_update_and_restart(downloaded_exe))
+
+
+class VoiceStudioDialog(ctk.CTkToplevel):
+    """
+    Modern Google Material 3 Voice Studio Dialog for Gemini 3.8.
+    Supports Voice Design (natural-language prompting), Voice Replication (reference + consent audio),
+    and custom Voice ID management.
+    """
+
+    def __init__(self, parent, tts_service: GeminiTTSService, on_voice_selected_callback: Callable[[str], None]):
+        super().__init__(parent)
+        self.parent_app = parent
+        self.tts_service = tts_service
+        self.on_voice_selected_callback = on_voice_selected_callback
+
+        self.title("Gemini 3.8 Voice Studio & Stimm-Klonen")
+        self.geometry("780x760")
+        self.minsize(720, 640)
+
+        self.audio_player = AudioPlayer()
+        self.current_preview_file: Optional[Path] = None
+        self.last_created_voice: Optional[Dict[str, Any]] = None
+
+        self.ref_audio_path: Optional[Path] = None
+        self.consent_audio_path: Optional[Path] = None
+
+        self._build_ui()
+
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.transient(parent)
+        self.grab_set()
+
+    def _on_close(self):
+        try:
+            self.audio_player.stop()
+        except Exception:
+            pass
+        self.destroy()
+
+    def _build_ui(self):
+        container = ctk.CTkFrame(
+            self,
+            corner_radius=18,
+            fg_color=M3_SURFACE,
+            border_width=1.5,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        container.pack(padx=16, pady=16, fill="both", expand=True)
+
+        # Header
+        header = ctk.CTkFrame(container, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(16, 4))
+
+        title_lbl = ctk.CTkLabel(
+            header,
+            text="🎨 Gemini 3.8 Voice Studio & Stimm-Klonen",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        title_lbl.pack(side="left")
+
+        ver_lbl = ctk.CTkLabel(
+            header,
+            text="Gemini 3.8 Flash Audio",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=M3_PRIMARY
+        )
+        ver_lbl.pack(side="right")
+
+        desc_lbl = ctk.CTkLabel(
+            container,
+            text="Erschaffe maßgeschneiderte Stimmen aus natürlicher Sprache (Voice Design) oder binde geklonte Profile ein.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT,
+            anchor="w"
+        )
+        desc_lbl.pack(fill="x", padx=20, pady=(0, 10))
+
+        # Tabs
+        self.tabview = ctk.CTkTabview(
+            container,
+            corner_radius=14,
+            fg_color=M3_SURFACE_CONTAINER,
+            segmented_button_fg_color=M3_SURFACE,
+            segmented_button_selected_color=M3_PRIMARY,
+            segmented_button_selected_hover_color=M3_PRIMARY_HOVER,
+            segmented_button_unselected_color=M3_SURFACE,
+            segmented_button_unselected_hover_color=M3_SURFACE_CONTAINER_HIGH,
+            text_color=M3_ON_PRIMARY
+        )
+        self.tabview.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+
+        self.tab_design = self.tabview.add("🎨 Voice Design (Prompt)")
+        self.tab_replicate = self.tabview.add("🎙️ Voice Replication (Klon)")
+        self.tab_manage = self.tabview.add("🔑 Meine Stimmen & IDs")
+
+        self._build_tab_design()
+        self._build_tab_replicate()
+        self._build_tab_manage()
+
+    # =========================================================================
+    # TAB 1: VOICE DESIGN (PROMPT-TO-VOICE)
+    # =========================================================================
+    def _build_tab_design(self):
+        info_card = ctk.CTkFrame(
+            self.tab_design,
+            corner_radius=10,
+            fg_color=("#E6F4EA", "#10281F"),
+            border_width=1,
+            border_color=("#A8DAB5", "#1B4D3E")
+        )
+        info_card.pack(fill="x", padx=12, pady=(8, 10))
+
+        ctk.CTkLabel(
+            info_card,
+            text="✨ Weltweit & in Deutschland voll verfügbar: Beschreibe eine Stimme in Alltagssprache. Gemini 3.8 erzeugt daraus ein hochauflösendes, dauerhaftes Stimm-Profil ohne Audioaufnahmen.",
+            wraplength=660,
+            justify="left",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=("#137333", "#81C995")
+        ).pack(padx=12, pady=8, anchor="w")
+
+        # Form fields
+        form_frame = ctk.CTkFrame(self.tab_design, fg_color="transparent")
+        form_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        # Row 1: Name, Gender, Language
+        row1 = ctk.CTkFrame(form_frame, fg_color="transparent")
+        row1.pack(fill="x", pady=(0, 8))
+
+        name_box = ctk.CTkFrame(row1, fg_color="transparent")
+        name_box.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkLabel(name_box, text="Name der Stimme:", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.vd_name_entry = ctk.CTkEntry(
+            name_box,
+            placeholder_text="z. B. Sophie - Hörbuch-Erzählerin",
+            height=36,
+            corner_radius=10,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=M3_SURFACE,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.vd_name_entry.pack(fill="x")
+
+        gender_box = ctk.CTkFrame(row1, fg_color="transparent")
+        gender_box.pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(gender_box, text="Geschlecht:", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.vd_gender_menu = ctk.CTkOptionMenu(
+            gender_box,
+            values=["Weiblich (female)", "Männlich (male)"],
+            height=36,
+            width=150,
+            corner_radius=10,
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.vd_gender_menu.pack()
+
+        lang_box = ctk.CTkFrame(row1, fg_color="transparent")
+        lang_box.pack(side="left")
+        ctk.CTkLabel(lang_box, text="Basissprache:", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.vd_lang_menu = ctk.CTkOptionMenu(
+            lang_box,
+            values=["🇩🇪 Deutsch (de-DE)", "🇺🇸 Englisch US (en-US)", "🇬🇧 Englisch UK (en-GB)", "🇫🇷 Französisch (fr-FR)", "🇪🇸 Spanisch (es-ES)", "🇮🇹 Italienisch (it-IT)"],
+            height=36,
+            width=160,
+            corner_radius=10,
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.vd_lang_menu.pack()
+
+        # Row 2: Schnellvorlage
+        row2 = ctk.CTkFrame(form_frame, fg_color="transparent")
+        row2.pack(fill="x", pady=(0, 6))
+
+        ctk.CTkLabel(row2, text="📋 Schnellvorlage wählen:", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(side="left", padx=(0, 10))
+        self.vd_templates = {
+            "✨ Eigene Beschreibung (Freitext)": "",
+            "📖 Hörbuch-Erzähler (Warm & Sonor)": "Eine warme, sonore und beruhigende männliche Erzählerstimme Mitte 50 mit tiefer Resonanz, getragenem Sprechtempo und exzellenter deutscher Artikulation.",
+            "📰 Seriöse Nachrichtensprecherin": "Eine sachliche, präzise und klar artikulierte weibliche Sprecherin Mitte 30 im Stil seriöser Audio-Dokumentationen und Nachrichten.",
+            "🎙️ Tech-Podcaster (Dynamisch)": "Eine dynamische, energiegeladene und nahbare Stimme Ende 20, enthusiastisch, freundlich und sympathisch.",
+            "🧘 Meditations-Leiterin (Sanft & Beruhigend)": "Eine sehr sanfte, leise, melodische und einfühlsame weibliche Stimme mit beruhigendem Fluss und entspannter Atmung.",
+            "🕵️ Krimi- & Hörspiel-Sprecher": "Eine markante, tiefe, leicht rauchige und geheimnisvolle Stimme mit spürbarer Spannung und erzählerischer Dramatik.",
+            "🛍️ Moderner Werbesprecher": "Eine frische, sympathische, einladende und überzeugende Stimme für moderne Audio-Spots und Erklärvideos.",
+        }
+        self.vd_template_menu = ctk.CTkOptionMenu(
+            row2,
+            values=list(self.vd_templates.keys()),
+            command=self._on_template_selected,
+            height=30,
+            corner_radius=10,
+            fg_color=M3_SURFACE,
+            button_color=("#D9E3E0", "#243834"),
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.vd_template_menu.pack(side="left", fill="x", expand=True)
+
+        # Row 3: Stimm-Beschreibung Prompt
+        ctk.CTkLabel(
+            self.tab_design,
+            text="Stimm-Beschreibung (Charakter, Alter, Timbre, Tempo):",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+
+        self.vd_prompt_box = ctk.CTkTextbox(
+            self.tab_design,
+            height=85,
+            corner_radius=10,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=M3_SURFACE,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT,
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.vd_prompt_box.pack(fill="x", padx=12, pady=(0, 10))
+        self.vd_prompt_box.insert("0.0", "Eine freundliche, ruhige deutsche Sprecherin mit warmer und klarer Stimme.")
+
+        # Action Button & Status
+        action_row = ctk.CTkFrame(self.tab_design, fg_color="transparent")
+        action_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        self.vd_btn_create = ctk.CTkButton(
+            action_row,
+            text="✨ Stimme erschaffen & Probehören",
+            command=self._create_prompted_voice,
+            height=40,
+            corner_radius=20,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=M3_ON_PRIMARY
+        )
+        self.vd_btn_create.pack(side="left")
+
+        self.vd_status_lbl = ctk.CTkLabel(
+            action_row,
+            text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.vd_status_lbl.pack(side="left", padx=14)
+
+        # Result & Preview Box
+        self.vd_result_frame = ctk.CTkFrame(
+            self.tab_design,
+            corner_radius=12,
+            fg_color=M3_SURFACE,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.vd_result_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.vd_result_info_lbl = ctk.CTkLabel(
+            self.vd_result_frame,
+            text="Noch keine neue Stimme in dieser Sitzung generiert.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=COLOR_MUTED_TEXT,
+            anchor="w"
+        )
+        self.vd_result_info_lbl.pack(fill="x", padx=14, pady=(10, 8))
+
+        ctrl_row = ctk.CTkFrame(self.vd_result_frame, fg_color="transparent")
+        ctrl_row.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.vd_btn_play = ctk.CTkButton(
+            ctrl_row,
+            text="▶️ Hörprobe abspielen",
+            command=self._play_preview,
+            state="disabled",
+            height=34,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_SECONDARY_CONTAINER,
+            text_color=M3_ON_SECONDARY_CONTAINER
+        )
+        self.vd_btn_play.pack(side="left", padx=(0, 8))
+
+        self.vd_btn_stop = ctk.CTkButton(
+            ctrl_row,
+            text="⏹️ Stopp",
+            command=self._stop_preview,
+            state="disabled",
+            height=34,
+            width=70,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color="transparent",
+            border_width=1,
+            border_color=M3_OUTLINE,
+            text_color=COLOR_PRIMARY_TEXT
+        )
+        self.vd_btn_stop.pack(side="left", padx=(0, 14))
+
+        self.vd_btn_save = ctk.CTkButton(
+            ctrl_row,
+            text="💾 Zu meinen Stimmen hinzufügen & Aktivieren",
+            command=self._save_and_activate_created_voice,
+            state="disabled",
+            height=34,
+            corner_radius=17,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=M3_ON_PRIMARY
+        )
+        self.vd_btn_save.pack(side="right")
+
+    def _on_template_selected(self, choice: str):
+        prompt = self.vd_templates.get(choice, "")
+        if prompt:
+            self.vd_prompt_box.delete("0.0", "end")
+            self.vd_prompt_box.insert("0.0", prompt)
+            suggested_name = choice.split("(")[0].replace("✨", "").replace("📖", "").replace("📰", "").replace("🎙️", "").replace("🧘", "").replace("🕵️", "").replace("🛍️", "").strip()
+            self.vd_name_entry.delete(0, "end")
+            self.vd_name_entry.insert(0, suggested_name)
+            if "weiblich" in prompt.lower() or "nachrichtensprecherin" in prompt.lower() or "leiterin" in prompt.lower():
+                self.vd_gender_menu.set("Weiblich (female)")
+            else:
+                self.vd_gender_menu.set("Männlich (male)")
+
+    def _create_prompted_voice(self):
+        name = self.vd_name_entry.get().strip()
+        if not name:
+            messagebox.showwarning("Fehlender Name", "Bitte gib einen Namen für die Stimme ein.")
+            return
+
+        prompt = self.vd_prompt_box.get("0.0", "end").strip()
+        if not prompt:
+            messagebox.showwarning("Fehlende Beschreibung", "Bitte gib eine Beschreibung der Stimme ein.")
+            return
+
+        gender = "female" if "weiblich" in self.vd_gender_menu.get().lower() else "male"
+        lang_raw = self.vd_lang_menu.get()
+        lang_code = "de-DE"
+        if "en-US" in lang_raw:
+            lang_code = "en-US"
+        elif "en-GB" in lang_raw:
+            lang_code = "en-GB"
+        elif "fr-FR" in lang_raw:
+            lang_code = "fr-FR"
+        elif "es-ES" in lang_raw:
+            lang_code = "es-ES"
+        elif "it-IT" in lang_raw:
+            lang_code = "it-IT"
+
+        self.vd_btn_create.configure(state="disabled", text="⏳ Gemini trainiert Stimm-Profil...")
+        self.vd_status_lbl.configure(text="Sende Anfrage an Google Cloud... Bitte kurz warten (ca. 20-30 Sek.).", text_color=M3_PRIMARY)
+
+        def run_create():
+            try:
+                res = self.tts_service.create_prompted_voice(
+                    display_name=name,
+                    prompt=prompt,
+                    gender=gender,
+                    language_code=lang_code,
+                    model="gemini-3.8-flash-tts"
+                )
+                self.after(0, lambda: self._on_prompted_voice_success(res, name, prompt, gender, lang_code))
+            except Exception as e:
+                self.after(0, lambda: self._on_prompted_voice_error(str(e)))
+
+        threading.Thread(target=run_create, daemon=True).start()
+
+    def _on_prompted_voice_success(self, res: dict, name: str, prompt: str, gender: str, lang_code: str):
+        self.vd_btn_create.configure(state="normal", text="✨ Stimme erschaffen & Probehören")
+        self.vd_status_lbl.configure(text="✅ Stimme erfolgreich erschaffen!", text_color="#10B981")
+
+        voice_id = res.get("id", f"voice_{int(time.time())}")
+        self.last_created_voice = {
+            "id": voice_id,
+            "name": name,
+            "desc": f"{prompt[:120]}... (Voice Design)",
+            "type": "prompted",
+            "gender": gender,
+            "language_code": lang_code,
+            "created_at": datetime.now().isoformat()
+        }
+
+        # Check for sample audio
+        sample_audio = res.get("sample_audio", {})
+        if sample_audio and "data" in sample_audio:
+            try:
+                audio_bytes = base64.b64decode(sample_audio["data"])
+                preview_file = TEMP_DIR / f"preview_{voice_id}.wav"
+                with open(preview_file, "wb") as f:
+                    f.write(audio_bytes)
+                self.current_preview_file = preview_file
+                self.vd_btn_play.configure(state="normal")
+                self.vd_btn_stop.configure(state="normal")
+                # Auto-play preview
+                self._play_preview()
+            except Exception as e:
+                print(f"Fehler beim Speichern der Hörprobe: {e}")
+
+        self.vd_btn_save.configure(state="normal")
+        self.vd_result_info_lbl.configure(
+            text=f"🎉 Bereit: '{name}' | ID: {voice_id} | {lang_code} ({gender})",
+            text_color=COLOR_PRIMARY_TEXT
+        )
+
+    def _on_prompted_voice_error(self, err_msg: str):
+        self.vd_btn_create.configure(state="normal", text="✨ Stimme erschaffen & Probehören")
+        self.vd_status_lbl.configure(text="Fehler bei der Generierung.", text_color=M3_ERROR)
+        messagebox.showerror("Fehler beim Erschaffen der Stimme", f"Die Stimme konnte nicht erstellt werden:\n\n{err_msg}")
+
+    def _play_preview(self):
+        if self.current_preview_file and self.current_preview_file.exists():
+            try:
+                self.audio_player.load(self.current_preview_file)
+                self.audio_player.play()
+            except Exception as e:
+                messagebox.showerror("Wiedergabefehler", f"Konnte Hörprobe nicht abspielen: {e}")
+
+    def _stop_preview(self):
+        try:
+            self.audio_player.stop()
+        except Exception:
+            pass
+
+    def _save_and_activate_created_voice(self):
+        if not self.last_created_voice:
+            return
+        save_custom_voice(self.last_created_voice)
+        voice_id = self.last_created_voice["id"]
+        if self.on_voice_selected_callback:
+            self.on_voice_selected_callback(voice_id)
+        messagebox.showinfo(
+            "Stimme gespeichert",
+            f"Die Stimme '{self.last_created_voice['name']}' wurde erfolgreich gespeichert und als aktive Stimme ausgewählt!"
+        )
+        self._refresh_custom_voices_list()
+        self._on_close()
+
+    # =========================================================================
+    # TAB 2: VOICE REPLICATION (KLONEN MIT AUDIO-DATEIEN)
+    # =========================================================================
+    def _build_tab_replicate(self):
+        info_card = ctk.CTkFrame(
+            self.tab_replicate,
+            corner_radius=10,
+            fg_color=("#FEF7E0", "#332701"),
+            border_width=1,
+            border_color=("#FEEFC3", "#5C4600")
+        )
+        info_card.pack(fill="x", padx=12, pady=(8, 10))
+
+        ctk.CTkLabel(
+            info_card,
+            text="ℹ️ Voice Replication klont die biometrischen Merkmale einer realen Person anhand von Referenz- und Verifizierungsaufnahmen.\n\n⚠️ Regionaler Hinweis (EWR/EU): Google schränkt das Hochladen biometrischer Stimmdateien im europäischen Wirtschaftsraum derzeit ein (API blockiert mit 'Location not supported'). Für Projekte mit Standort Deutschland/EU nutzen Sie bitte den Reiter 'Voice Design'!",
+            wraplength=660,
+            justify="left",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=("#B06000", "#FDD663")
+        ).pack(padx=12, pady=8, anchor="w")
+
+        # Name
+        name_row = ctk.CTkFrame(self.tab_replicate, fg_color="transparent")
+        name_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(name_row, text="Name des Stimm-Klons:", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(side="left", padx=(0, 10))
+        self.vr_name_entry = ctk.CTkEntry(
+            name_row,
+            placeholder_text="z. B. Mein Stimm-Klon",
+            height=36,
+            corner_radius=10,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=M3_SURFACE,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.vr_name_entry.pack(side="left", fill="x", expand=True)
+
+        # File 1: Reference Audio
+        ref_box = ctk.CTkFrame(self.tab_replicate, corner_radius=10, fg_color=M3_SURFACE, border_width=1, border_color=M3_OUTLINE_VARIANT)
+        ref_box.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(ref_box, text="1. Referenz-Audiodatei (ca. 10–30s saubere Sprache):", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", padx=12, pady=(8, 4))
+        
+        ref_btn_row = ctk.CTkFrame(ref_box, fg_color="transparent")
+        ref_btn_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        ctk.CTkButton(
+            ref_btn_row,
+            text="📁 Referenz-Audio auswählen...",
+            command=self._pick_ref_audio,
+            height=32,
+            corner_radius=16,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_SECONDARY_CONTAINER,
+            text_color=M3_ON_SECONDARY_CONTAINER
+        ).pack(side="left")
+
+        self.vr_ref_lbl = ctk.CTkLabel(
+            ref_btn_row,
+            text="Keine Datei ausgewählt",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.vr_ref_lbl.pack(side="left", padx=10)
+
+        # File 2: Consent Audio
+        consent_box = ctk.CTkFrame(self.tab_replicate, corner_radius=10, fg_color=M3_SURFACE, border_width=1, border_color=M3_OUTLINE_VARIANT)
+        consent_box.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(consent_box, text="2. Einverständniserklärung (Consent-Audio des Sprechers):", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", padx=12, pady=(8, 4))
+        
+        statement_frame = ctk.CTkFrame(consent_box, corner_radius=8, fg_color=M3_SURFACE_CONTAINER)
+        statement_frame.pack(fill="x", padx=12, pady=(0, 8))
+        ctk.CTkLabel(
+            statement_frame,
+            text='Der Sprecher muss folgenden Verifizierungssatz aufnehmen:\n"I am the owner of this voice and I consent to Google using this voice to create a synthetic voice model."',
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, slant="italic"),
+            text_color=COLOR_PRIMARY_TEXT,
+            justify="left"
+        ).pack(padx=10, pady=6, anchor="w")
+
+        consent_btn_row = ctk.CTkFrame(consent_box, fg_color="transparent")
+        consent_btn_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        ctk.CTkButton(
+            consent_btn_row,
+            text="📁 Consent-Audio auswählen...",
+            command=self._pick_consent_audio,
+            height=32,
+            corner_radius=16,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_SECONDARY_CONTAINER,
+            text_color=M3_ON_SECONDARY_CONTAINER
+        ).pack(side="left")
+
+        self.vr_consent_lbl = ctk.CTkLabel(
+            consent_btn_row,
+            text="Keine Datei ausgewählt",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.vr_consent_lbl.pack(side="left", padx=10)
+
+        # Clone Action
+        vr_action_row = ctk.CTkFrame(self.tab_replicate, fg_color="transparent")
+        vr_action_row.pack(fill="x", padx=12, pady=(6, 10))
+
+        self.vr_btn_clone = ctk.CTkButton(
+            vr_action_row,
+            text="🧬 Stimme jetzt klonen",
+            command=self._clone_voice,
+            height=40,
+            corner_radius=20,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+            fg_color=M3_PRIMARY,
+            hover_color=M3_PRIMARY_HOVER,
+            text_color=M3_ON_PRIMARY
+        )
+        self.vr_btn_clone.pack(side="left")
+
+        self.vr_status_lbl = ctk.CTkLabel(
+            self.tab_replicate,
+            text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            wraplength=660,
+            justify="left"
+        )
+        self.vr_status_lbl.pack(fill="x", padx=12, pady=(4, 0))
+
+    def _pick_ref_audio(self):
+        file_path = filedialog.askopenfilename(
+            title="Referenz-Audiodatei auswählen",
+            filetypes=[("Audiodateien", "*.wav;*.mp3;*.m4a;*.ogg"), ("Alle Dateien", "*.*")]
+        )
+        if file_path:
+            p = Path(file_path)
+            self.ref_audio_path = p
+            size_mb = p.stat().st_size / (1024 * 1024)
+            self.vr_ref_lbl.configure(text=f"✓ {p.name} ({size_mb:.2f} MB)", text_color="#10B981")
+
+    def _pick_consent_audio(self):
+        file_path = filedialog.askopenfilename(
+            title="Consent-Audiodatei auswählen",
+            filetypes=[("Audiodateien", "*.wav;*.mp3;*.m4a;*.ogg"), ("Alle Dateien", "*.*")]
+        )
+        if file_path:
+            p = Path(file_path)
+            self.consent_audio_path = p
+            size_mb = p.stat().st_size / (1024 * 1024)
+            self.vr_consent_lbl.configure(text=f"✓ {p.name} ({size_mb:.2f} MB)", text_color="#10B981")
+
+    def _clone_voice(self):
+        name = self.vr_name_entry.get().strip()
+        if not name:
+            messagebox.showwarning("Fehlender Name", "Bitte gib einen Namen für den Stimm-Klon ein.")
+            return
+
+        if not self.ref_audio_path or not self.ref_audio_path.exists():
+            messagebox.showwarning("Referenz fehlt", "Bitte wähle eine Referenz-Audiodatei aus.")
+            return
+
+        if not self.consent_audio_path or not self.consent_audio_path.exists():
+            messagebox.showwarning("Einverständnis fehlt", "Bitte wähle die Consent-Audiodatei aus.")
+            return
+
+        self.vr_btn_clone.configure(state="disabled", text="⏳ Sende Audiodaten an Google...")
+        self.vr_status_lbl.configure(text="Google verifiziert Sprecher-Biometrie und Consent...", text_color=M3_PRIMARY)
+
+        def run_clone():
+            try:
+                with open(self.ref_audio_path, "rb") as f:
+                    ref_bytes = f.read()
+                with open(self.consent_audio_path, "rb") as f:
+                    consent_bytes = f.read()
+
+                res = self.tts_service.create_replicated_voice(
+                    display_name=name,
+                    source_audio_bytes=ref_bytes,
+                    consent_audio_bytes=consent_bytes,
+                    model="gemini-3.8-flash-tts"
+                )
+                self.after(0, lambda: self._on_clone_success(res, name))
+            except Exception as e:
+                self.after(0, lambda: self._on_clone_error(str(e)))
+
+        threading.Thread(target=run_clone, daemon=True).start()
+
+    def _on_clone_success(self, res: dict, name: str):
+        self.vr_btn_clone.configure(state="normal", text="🧬 Stimme jetzt klonen")
+        self.vr_status_lbl.configure(text="✅ Stimme erfolgreich geklont!", text_color="#10B981")
+
+        voice_id = res.get("id", f"voice_{int(time.time())}")
+        voice_data = {
+            "id": voice_id,
+            "name": name,
+            "desc": f"Geklonte Stimme ({Path(self.ref_audio_path).name})",
+            "type": "replicated",
+            "gender": "unknown",
+            "language_code": "auto",
+            "created_at": datetime.now().isoformat()
+        }
+        save_custom_voice(voice_data)
+        if self.on_voice_selected_callback:
+            self.on_voice_selected_callback(voice_id)
+
+        messagebox.showinfo(
+            "Stimmklon erstellt",
+            f"Die Stimme '{name}' ({voice_id}) wurde erfolgreich geklont und als aktive Stimme ausgewählt!"
+        )
+        self._refresh_custom_voices_list()
+        self._on_close()
+
+    def _on_clone_error(self, err_msg: str):
+        self.vr_btn_clone.configure(state="normal", text="🧬 Stimme jetzt klonen")
+        self.vr_status_lbl.configure(text=f"Fehler: {err_msg[:180]}...", text_color=M3_ERROR)
+        messagebox.showerror(
+            "Fehler beim Klonen",
+            f"{err_msg}"
+        )
+
+    # =========================================================================
+    # TAB 3: MEINE STIMMEN & MANUELLE IDS
+    # =========================================================================
+    def _build_tab_manage(self):
+        # Section 1: Manual import
+        import_card = ctk.CTkFrame(self.tab_manage, corner_radius=10, fg_color=M3_SURFACE, border_width=1, border_color=M3_OUTLINE_VARIANT)
+        import_card.pack(fill="x", padx=12, pady=(8, 10))
+
+        ctk.CTkLabel(import_card, text="🔑 Vorhandene Voice-ID hinzufügen (z. B. aus Google AI Studio):", font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"), text_color=COLOR_PRIMARY_TEXT).pack(anchor="w", padx=12, pady=(8, 6))
+
+        row = ctk.CTkFrame(import_card, fg_color="transparent")
+        row.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.man_id_entry = ctk.CTkEntry(
+            row,
+            placeholder_text="Voice-ID (z. B. voice_abc123... oder voicekey_...)",
+            height=34,
+            corner_radius=8,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=M3_SURFACE_CONTAINER,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.man_id_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.man_name_entry = ctk.CTkEntry(
+            row,
+            placeholder_text="Anzeigename (z. B. Studio-Stimme)",
+            height=34,
+            width=200,
+            corner_radius=8,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=M3_SURFACE_CONTAINER,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.man_name_entry.pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            row,
+            text="➕ Hinzufügen",
+            command=self._add_manual_voice,
+            height=34,
+            corner_radius=8,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_PRIMARY,
+            text_color=M3_ON_PRIMARY
+        ).pack(side="left")
+
+        # Sync button row
+        sync_row = ctk.CTkFrame(self.tab_manage, fg_color="transparent")
+        sync_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.sync_btn = ctk.CTkButton(
+            sync_row,
+            text="🔄 Aus Google Cloud synchronisieren",
+            command=self._sync_cloud_voices,
+            height=32,
+            corner_radius=16,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            fg_color=M3_SECONDARY_CONTAINER,
+            text_color=M3_ON_SECONDARY_CONTAINER
+        )
+        self.sync_btn.pack(side="left")
+
+        self.sync_status_lbl = ctk.CTkLabel(
+            sync_row,
+            text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLOR_MUTED_TEXT
+        )
+        self.sync_status_lbl.pack(side="left", padx=10)
+
+        # Scrollable voice list
+        ctk.CTkLabel(
+            self.tab_manage,
+            text="Gespeicherte Stimmen:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            text_color=COLOR_PRIMARY_TEXT
+        ).pack(anchor="w", padx=12, pady=(4, 4))
+
+        self.voices_scroll_frame = ctk.CTkScrollableFrame(
+            self.tab_manage,
+            corner_radius=12,
+            fg_color=M3_SURFACE,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT
+        )
+        self.voices_scroll_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+        self._refresh_custom_voices_list()
+
+    def _add_manual_voice(self):
+        voice_id = self.man_id_entry.get().strip()
+        name = self.man_name_entry.get().strip() or voice_id
+        if not voice_id:
+            messagebox.showwarning("Fehlende ID", "Bitte gib eine Voice-ID ein.")
+            return
+
+        voice_data = {
+            "id": voice_id,
+            "name": name,
+            "desc": f"Benutzerdefinierte Voice-ID ({voice_id})",
+            "type": "custom",
+            "created_at": datetime.now().isoformat()
+        }
+        save_custom_voice(voice_data)
+        self.man_id_entry.delete(0, "end")
+        self.man_name_entry.delete(0, "end")
+        self._refresh_custom_voices_list()
+        messagebox.showinfo("Hinzugefügt", f"Stimme '{name}' wurde erfolgreich hinterlegt!")
+
+    def _sync_cloud_voices(self):
+        self.sync_btn.configure(state="disabled", text="⏳ Synchronisiere...")
+        self.sync_status_lbl.configure(text="Frage Stimmen aus Google Cloud ab...")
+
+        def run_sync():
+            try:
+                cloud_voices = self.tts_service.fetch_cloud_voices()
+                for cv in cloud_voices:
+                    cid = cv.get("id")
+                    if cid:
+                        save_custom_voice({
+                            "id": cid,
+                            "name": cv.get("display_name", cid),
+                            "desc": cv.get("description", cv.get("prompted", {}).get("input", "Aus Google Cloud synchronisiert")),
+                            "type": cv.get("type", "prompted"),
+                            "gender": cv.get("gender", "unknown"),
+                            "language_code": cv.get("language_code", "auto"),
+                            "created_at": datetime.now().isoformat()
+                        })
+                count = len(cloud_voices)
+                self.after(0, lambda: self._on_sync_done(count))
+            except Exception as e:
+                self.after(0, lambda: self._on_sync_error(str(e)))
+
+        threading.Thread(target=run_sync, daemon=True).start()
+
+    def _on_sync_done(self, count: int):
+        self.sync_btn.configure(state="normal", text="🔄 Aus Google Cloud synchronisieren")
+        self.sync_status_lbl.configure(text=f"✓ {count} Stimme(n) synchronisiert", text_color="#10B981")
+        self._refresh_custom_voices_list()
+
+    def _on_sync_error(self, err: str):
+        self.sync_btn.configure(state="normal", text="🔄 Aus Google Cloud synchronisieren")
+        self.sync_status_lbl.configure(text=f"Fehler: {err[:60]}", text_color=M3_ERROR)
+
+    def _refresh_custom_voices_list(self):
+        for widget in self.voices_scroll_frame.winfo_children():
+            widget.destroy()
+
+        voices = load_custom_voices()
+        if not voices:
+            empty_lbl = ctk.CTkLabel(
+                self.voices_scroll_frame,
+                text="Noch keine benutzerdefinierten Stimmen gespeichert.\nNutze 'Voice Design', um eine neue Stimme zu erschaffen!",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                text_color=COLOR_MUTED_TEXT,
+                justify="center"
+            )
+            empty_lbl.pack(pady=30)
+            return
+
+        for v in voices:
+            card = ctk.CTkFrame(
+                self.voices_scroll_frame,
+                corner_radius=10,
+                fg_color=M3_SURFACE_CONTAINER,
+                border_width=1,
+                border_color=M3_OUTLINE_VARIANT
+            )
+            card.pack(fill="x", padx=6, pady=4)
+
+            info_col = ctk.CTkFrame(card, fg_color="transparent")
+            info_col.pack(side="left", fill="x", expand=True, padx=12, pady=8)
+
+            title_row = ctk.CTkFrame(info_col, fg_color="transparent")
+            title_row.pack(fill="x")
+
+            vtype = v.get("type", "prompted")
+            type_tag = "🎨 Voice Design" if vtype == "prompted" else ("🎙️ Stimmklon" if vtype == "replicated" else "🔑 Voice-ID")
+
+            ctk.CTkLabel(
+                title_row,
+                text=v.get("name", "Unbenannt"),
+                font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+                text_color=COLOR_PRIMARY_TEXT
+            ).pack(side="left")
+
+            ctk.CTkLabel(
+                title_row,
+                text=f" [{type_tag}]",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                text_color=M3_PRIMARY
+            ).pack(side="left", padx=4)
+
+            sub_txt = f"ID: {v.get('id', '')} | {v.get('language_code', 'auto')} ({v.get('gender', '')})"
+            ctk.CTkLabel(
+                info_col,
+                text=sub_txt,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+                text_color=COLOR_MUTED_TEXT,
+                anchor="w"
+            ).pack(fill="x", pady=(2, 0))
+
+            btn_col = ctk.CTkFrame(card, fg_color="transparent")
+            btn_col.pack(side="right", padx=10, pady=8)
+
+            vid = v.get("id")
+            ctk.CTkButton(
+                btn_col,
+                text="⭐ Aktivieren",
+                command=lambda target_id=vid: self._activate_voice_by_id(target_id),
+                height=30,
+                corner_radius=15,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+                fg_color=M3_PRIMARY,
+                text_color=M3_ON_PRIMARY
+            ).pack(side="left", padx=(0, 6))
+
+            ctk.CTkButton(
+                btn_col,
+                text="🗑️",
+                command=lambda target_id=vid: self._delete_voice_by_id(target_id),
+                height=30,
+                width=34,
+                corner_radius=15,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                fg_color="transparent",
+                hover_color=M3_ERROR_HOVER,
+                border_width=1,
+                border_color=M3_OUTLINE,
+                text_color=M3_ERROR
+            ).pack(side="left")
+
+    def _activate_voice_by_id(self, voice_id: str):
+        if self.on_voice_selected_callback:
+            self.on_voice_selected_callback(voice_id)
+        messagebox.showinfo("Aktiviert", f"Stimme '{voice_id}' wurde als aktive Stimme in der Hauptoberfläche gewählt!")
+        self._on_close()
+
+    def _delete_voice_by_id(self, voice_id: str):
+        if messagebox.askyesno("Stimme löschen", f"Möchtest du die Stimme '{voice_id}' wirklich entfernen?"):
+            delete_custom_voice(voice_id)
+            # Try cloud delete if stateful
+            threading.Thread(target=lambda: self.tts_service.delete_cloud_voice(voice_id), daemon=True).start()
+            self._refresh_custom_voices_list()
+            if self.on_voice_selected_callback:
+                self.on_voice_selected_callback("Puck")
 
 
 
@@ -1372,7 +2284,7 @@ class GeminiTTSApp(ctk.CTk):
         ).pack(side="left")
 
         # Category Filter Dropdown
-        self.voice_categories = ["Alle Stimmen", "⭐ Favoriten & Allrounder", "🇩🇪 Deutsche Stimmen & Rollen", "📖 Erzähler & Storytelling"]
+        self.voice_categories = ["Alle Stimmen", "🎙️ Eigene / Geklonte Stimmen", "⭐ Favoriten & Allrounder", "🇩🇪 Deutsche Stimmen & Rollen", "📖 Erzähler & Storytelling"]
         self.voice_category_var = ctk.StringVar(value="Alle Stimmen")
         self.voice_category_menu = ctk.CTkOptionMenu(
             voice_header_row,
@@ -1380,7 +2292,7 @@ class GeminiTTSApp(ctk.CTk):
             variable=self.voice_category_var,
             command=self._on_voice_category_changed,
             height=26,
-            width=135,
+            width=140,
             corner_radius=10,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
             dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=11),
@@ -1394,7 +2306,8 @@ class GeminiTTSApp(ctk.CTk):
         )
         self.voice_category_menu.pack(side="right")
 
-        voice_options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in AVAILABLE_VOICES]
+        all_initial_voices = get_all_voices()
+        voice_options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in all_initial_voices]
         self.voice_var = ctk.StringVar(value=voice_options[0])
         self.voice_menu = ctk.CTkOptionMenu(
             voice_box,
@@ -1417,13 +2330,28 @@ class GeminiTTSApp(ctk.CTk):
 
         self.voice_desc_lbl = ctk.CTkLabel(
             voice_box,
-            text=AVAILABLE_VOICES[0]["desc"],
+            text=all_initial_voices[0]["desc"],
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=COLOR_MUTED_TEXT,
             wraplength=270,
             justify="left"
         )
         self.voice_desc_lbl.pack(anchor="w", pady=(6, 0))
+
+        self.btn_open_voice_studio = ctk.CTkButton(
+            voice_box,
+            text="🎨 Voice Studio / Stimme klonen...",
+            command=self._open_voice_studio_dialog,
+            height=32,
+            corner_radius=10,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=M3_SECONDARY_CONTAINER,
+            hover_color=M3_SURFACE_CONTAINER_HIGH,
+            text_color=M3_ON_SECONDARY_CONTAINER,
+            border_width=1,
+            border_color=M3_OUTLINE_VARIANT,
+        )
+        self.btn_open_voice_studio.pack(fill="x", pady=(8, 0))
 
         # Language Selector (32 Languages)
         lang_box = ctk.CTkFrame(voice_card, fg_color="transparent")
@@ -2570,26 +3498,63 @@ class GeminiTTSApp(ctk.CTk):
                 return m["id"]
         return AVAILABLE_MODELS[0]["id"]
 
+    def _open_voice_studio_dialog(self):
+        def on_voice_selected(voice_id: str):
+            self._refresh_voice_options(select_voice_id=voice_id)
+
+        VoiceStudioDialog(self, self.tts_service, on_voice_selected)
+
+    def _refresh_voice_options(self, select_voice_id: Optional[str] = None):
+        all_voices = get_all_voices()
+        category = self.voice_category_var.get()
+        if category == "Alle Stimmen":
+            filtered = all_voices
+        else:
+            filtered = [v for v in all_voices if v.get("category") == category]
+
+        if not filtered:
+            filtered = all_voices
+            self.voice_category_var.set("Alle Stimmen")
+
+        options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in filtered]
+        self.voice_menu.configure(values=options)
+
+        target_option = None
+        if select_voice_id:
+            for opt in options:
+                if opt.startswith(select_voice_id + " ") or opt == select_voice_id or select_voice_id in opt:
+                    target_option = opt
+                    break
+
+        if not target_option and options:
+            target_option = options[0]
+
+        if target_option:
+            self.voice_var.set(target_option)
+            self._on_voice_changed(target_option)
+
     def _on_voice_changed(self, choice: str):
         voice_id = self._get_selected_voice_id()
-        for v in AVAILABLE_VOICES:
+        for v in get_all_voices():
             if v["id"] == voice_id:
                 self.voice_desc_lbl.configure(text=v["desc"])
                 break
 
     def _on_voice_category_changed(self, category: str):
+        all_voices = get_all_voices()
         if category == "Alle Stimmen":
-            filtered = AVAILABLE_VOICES
+            filtered = all_voices
         else:
-            filtered = [v for v in AVAILABLE_VOICES if v.get("category") == category]
-        
+            filtered = [v for v in all_voices if v.get("category") == category]
+
         if not filtered:
-            filtered = AVAILABLE_VOICES
+            filtered = all_voices
 
         options = [f"{v['id']} ({v['desc'].split('(')[-1].replace(')', '')})" for v in filtered]
         self.voice_menu.configure(values=options)
-        self.voice_var.set(options[0])
-        self._on_voice_changed(options[0])
+        if options:
+            self.voice_var.set(options[0])
+            self._on_voice_changed(options[0])
 
     def _on_preset_changed(self, choice: str):
         preset = None

@@ -245,8 +245,22 @@ class GeminiTTSService:
         current_key: str
     ) -> Optional[bytes]:
         """Make a single API call for one chunk to a specific model."""
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
-        
+        is_custom_voice = (
+            voice_name.startswith("voice_") or 
+            voice_name.startswith("voicekey_") or 
+            voice_name.startswith("voices/")
+        )
+        if is_custom_voice:
+            voice_config = {
+                "voice": voice_name
+            }
+        else:
+            voice_config = {
+                "prebuiltVoiceConfig": {
+                    "voiceName": voice_name
+                }
+            }
+
         payload: Dict[str, Any] = {
             "contents": [
                 {
@@ -258,14 +272,12 @@ class GeminiTTSService:
             "generationConfig": {
                 "responseModalities": ["AUDIO"],
                 "speechConfig": {
-                    "voiceConfig": {
-                        "prebuiltVoiceConfig": {
-                            "voiceName": voice_name
-                        }
-                    }
+                    "voiceConfig": voice_config
                 }
             }
         }
+
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
 
         response = requests.post(
             endpoint,
@@ -321,6 +333,138 @@ class GeminiTTSService:
         except Exception:
             pass
         return []
+
+    def create_prompted_voice(
+        self,
+        display_name: str,
+        prompt: str,
+        gender: str = "female",
+        language_code: str = "de-DE",
+        model: str = "gemini-3.8-flash-tts"
+    ) -> Dict[str, Any]:
+        """
+        Create a custom voice using natural language Voice Design.
+        """
+        current_key = self.api_key or get_api_key()
+        if not current_key:
+            raise ValueError("Kein Gemini API-Key angegeben. Bitte trage deinen API-Key ein.")
+
+        url = "https://generativelanguage.googleapis.com/v1beta/voices"
+        payload = {
+            "store": True,
+            "voice": {
+                "model": model,
+                "type": "prompted",
+                "display_name": display_name,
+                "gender": gender,
+                "language_code": language_code,
+                "prompted": {
+                    "input": prompt
+                }
+            }
+        }
+        headers = {
+            "x-goog-api-key": current_key,
+            "Content-Type": "application/json"
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=90)
+        if resp.status_code != 200:
+            err_msg = resp.text
+            try:
+                err_json = resp.json()
+                err_msg = err_json.get("error", {}).get("message", err_msg)
+            except Exception:
+                pass
+            raise RuntimeError(f"Google Voice Design Fehler ({resp.status_code}): {err_msg}")
+
+        return resp.json()
+
+    def create_replicated_voice(
+        self,
+        display_name: str,
+        source_audio_bytes: bytes,
+        consent_audio_bytes: bytes,
+        model: str = "gemini-3.8-flash-tts",
+        store: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Create a replicated voice using reference audio and consent recording.
+        Note: Currently restricted in EEA/EU, UK, Switzerland, and India by Google.
+        """
+        current_key = self.api_key or get_api_key()
+        if not current_key:
+            raise ValueError("Kein Gemini API-Key angegeben. Bitte trage deinen API-Key ein.")
+
+        source_b64 = base64.b64encode(source_audio_bytes).decode("utf-8")
+        consent_b64 = base64.b64encode(consent_audio_bytes).decode("utf-8")
+
+        url = "https://generativelanguage.googleapis.com/v1beta/voices"
+        payload = {
+            "store": store,
+            "voice": {
+                "model": model,
+                "type": "replicated",
+                "display_name": display_name,
+                "replicated": {
+                    "source_audio": source_b64,
+                    "consent_audio": consent_b64
+                }
+            }
+        }
+        headers = {
+            "x-goog-api-key": current_key,
+            "Content-Type": "application/json"
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=90)
+        if resp.status_code != 200:
+            err_msg = resp.text
+            try:
+                err_json = resp.json()
+                err_msg = err_json.get("error", {}).get("message", err_msg)
+            except Exception:
+                pass
+            if "location" in err_msg.lower() or "region" in err_msg.lower() or "not available" in err_msg.lower() or resp.status_code == 403:
+                raise RuntimeError(
+                    "Google Voice Replication ist in deiner Region (EWR/EU/Deutschland) aus Datenschutzgründen aktuell noch nicht freigegeben.\n\n"
+                    "💡 Empfehlung: Nutze den Reiter 'Voice Design' (Prompting) – dieser ist weltweit und in Deutschland uneingeschränkt verfügbar und erzeugt herausragende deutsche Stimmen!"
+                )
+            raise RuntimeError(f"Google Voice Replication Fehler ({resp.status_code}): {err_msg}")
+
+        return resp.json()
+
+    def fetch_cloud_voices(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all voices from Google project, returning custom/replicated/prompted voices.
+        """
+        current_key = self.api_key or get_api_key()
+        if not current_key:
+            return []
+        try:
+            url = "https://generativelanguage.googleapis.com/v1beta/voices?pageSize=200"
+            headers = {"x-goog-api-key": current_key}
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                voices = resp.json().get("voices", [])
+                custom_voices = [v for v in voices if v.get("type") != "prebuilt"]
+                return custom_voices
+        except Exception:
+            pass
+        return []
+
+    def delete_cloud_voice(self, voice_id: str) -> bool:
+        """
+        Delete a custom voice from Google cloud project.
+        """
+        current_key = self.api_key or get_api_key()
+        if not current_key:
+            return False
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/voices/{voice_id}"
+            headers = {"x-goog-api-key": current_key}
+            resp = requests.delete(url, headers=headers, timeout=10)
+            return resp.status_code in [200, 204]
+        except Exception:
+            return False
 
     def generate_speech(
         self,
