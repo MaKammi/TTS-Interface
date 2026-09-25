@@ -704,7 +704,7 @@ class GeminiTTSApp(ctk.CTk):
         self.key_status_btn.grid(row=0, column=2, padx=(0, 14), pady=14, sticky="e")
 
         self.theme_switch = ctk.CTkSwitch(
-            header_frame,
+            self.header_frame,
             text="Dunkelmodus",
             command=self._toggle_theme,
             onvalue="Dark",
