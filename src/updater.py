@@ -46,34 +46,46 @@ def format_release_notes(raw_notes: str) -> str:
     lines = raw_notes.replace("\r\n", "\n").split("\n")
     cleaned_lines = []
     for line in lines:
+        indent_level = len(line) - len(line.lstrip(" "))
         stripped = line.strip()
         if not stripped:
             cleaned_lines.append("")
             continue
 
+        def clean_md(text: str) -> str:
+            # [Link text](url) -> Link text
+            text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+            # **bold** or __bold__ -> bold
+            text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+            # *italic* or _italic_ -> italic
+            text = re.sub(r"(\*|_)(.*?)\1", r"\2", text)
+            # `code` -> code
+            text = re.sub(r"`(.*?)`", r"\1", text)
+            return text
+
         # Headings
-        if stripped.startswith("### "):
-            cleaned_lines.append(f"📌  {stripped[4:].strip()}\n")
+        if stripped.startswith("#### "):
+            cleaned_lines.append(f"🔹 {clean_md(stripped[5:].strip())}\n")
+            continue
+        elif stripped.startswith("### "):
+            cleaned_lines.append(f"📌 {clean_md(stripped[4:].strip())}\n")
             continue
         elif stripped.startswith("## "):
-            cleaned_lines.append(f"📢  {stripped[3:].strip()}\n")
+            cleaned_lines.append(f"📢 {clean_md(stripped[3:].strip())}\n")
             continue
         elif stripped.startswith("# "):
-            cleaned_lines.append(f"🚀  {stripped[2:].strip()}\n")
+            cleaned_lines.append(f"🚀 {clean_md(stripped[2:].strip())}\n")
             continue
 
         # List items (- or *)
         if stripped.startswith("- ") or stripped.startswith("* "):
-            content = stripped[2:].strip()
-            # Clean bold **text** -> text
-            content = re.sub(r"\*\*(.*?)\*\*", r"\1", content)
-            content = re.sub(r"`(.*?)`", r"\1", content)
-            cleaned_lines.append(f"   •  {content}")
+            content = clean_md(stripped[2:].strip())
+            indent_prefix = "      " if indent_level >= 2 else "   "
+            bullet = "– " if indent_level >= 2 else "• "
+            cleaned_lines.append(f"{indent_prefix}{bullet}{content}")
             continue
 
-        clean_line = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
-        clean_line = re.sub(r"`(.*?)`", r"\1", clean_line)
-        cleaned_lines.append(clean_line)
+        cleaned_lines.append(clean_md(stripped))
 
     res = "\n".join(cleaned_lines)
     res = re.sub(r"\n{3,}", "\n\n", res)
@@ -260,24 +272,36 @@ timeout /t 1 /nobreak >nul
 tasklist /fi "PID eq %OLD_PID%" | findstr /i "%OLD_PID%" >nul
 if not errorlevel 1 goto wait_pid
 
-timeout /t 1 /nobreak >nul
+:: Give PyInstaller bootloader parent process extra time to release file lock
+timeout /t 2 /nobreak >nul
 
+set RETRIES=0
+:try_copy
 echo [Gemini TTS Studio] Ersetze ausfuehrbare Datei...
-copy /y %NEW_EXE% %TARGET_EXE% >nul
+copy /y %NEW_EXE% %TARGET_EXE% >nul 2>&1
 if errorlevel 1 (
-    echo [!] Fehler beim Ersetzen. Zweiter Versuch in 2 Sekunden...
-    timeout /t 2 /nobreak >nul
-    copy /y %NEW_EXE% %TARGET_EXE% >nul
+    set /a RETRIES+=1
+    if %RETRIES% leq 10 (
+        timeout /t 1 /nobreak >nul
+        goto try_copy
+    )
 )
 
-del /f /q %NEW_EXE% >nul
+del /f /q %NEW_EXE% >nul 2>&1
 
 :: Clear all PyInstaller bootloader environment variables!
 :: Otherwise child process fails security validation check
 for /f "tokens=1 delims==" %%v in ('set _PYI 2^>nul') do set %%v=
 for /f "tokens=1 delims==" %%v in ('set _MEI 2^>nul') do set %%v=
+for /f "tokens=1 delims==" %%v in ('set PYINSTALLER 2^>nul') do set %%v=
 set _PYI_PARENT_PROCESS_LEVEL=
+set _PYI_APPLICATION_HOME_DIR=
+set _PYI_ARCHIVE_FILE=
+set _PYI_SPLASH_IPC=
 set _MEIPASS2=
+set _MEIPASS=
+set PYINSTALLER_STRICT_UNPACK_MODE=
+set PYINSTALLER_RESET_ENVIRONMENT=
 
 echo [Gemini TTS Studio] Starte neue Version...
 cd /d "{current_exe.parent.resolve()}"
@@ -289,7 +313,10 @@ start "" %TARGET_EXE%
             f.write(bat_content)
 
         # Launch detached updater script with sanitized environment
-        clean_env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI") and not k.startswith("_MEI")}
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("_PYI") and not k.startswith("_MEI") and not k.startswith("PYINSTALLER")
+        }
 
         creation_flags = 0
         if sys.platform == "win32":
@@ -304,3 +331,4 @@ start "" %TARGET_EXE%
 
         # Exit current process immediately
         sys.exit(0)
+
