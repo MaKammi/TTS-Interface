@@ -44,7 +44,23 @@ class UpdateService:
     def __init__(self, repo: str = GITHUB_REPO, current_version: str = APP_VERSION):
         self.repo = repo
         self.current_version = current_version
-        self.github_token = os.getenv("GITHUB_TOKEN", os.getenv("GH_TOKEN", ""))
+        self.github_token = self._resolve_github_token()
+
+    def _resolve_github_token(self) -> str:
+        token = os.getenv("GITHUB_TOKEN", os.getenv("GH_TOKEN", ""))
+        if token:
+            return token.strip()
+        # Fallback to local gh CLI if available (e.g. developer environment)
+        try:
+            import shutil
+            if shutil.which("gh"):
+                out = subprocess.check_output(["gh", "auth", "token"], timeout=3, stderr=subprocess.DEVNULL)
+                t = out.decode("utf-8").strip()
+                if t and t.startswith("gh"):
+                    return t
+        except Exception:
+            pass
+        return ""
 
     def check_for_updates(self, custom_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """

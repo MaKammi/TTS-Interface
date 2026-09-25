@@ -3409,14 +3409,15 @@ class GeminiTTSApp(ctk.CTk):
 
     def _check_for_updates_background(self):
         """Silently checks for updates in background on launch."""
-        time.sleep(2.5)  # Wait for GUI to settle
+        time.sleep(1.5)  # Wait for GUI to settle
         try:
             update_info = self.update_service.check_for_updates()
             if update_info and update_info.get("update_available"):
                 self.pending_update = update_info
                 self.after(0, lambda: self._show_update_badge(update_info))
-        except Exception:
-            pass
+                self.after(600, lambda: self._open_update_dialog(update_info))
+        except Exception as e:
+            print(f"[Updater] Fehler bei Update-Prüfung: {e}")
 
     def _show_update_badge(self, update_info: Dict[str, Any]):
         """Renders an eye-catching update button in the header bar."""
